@@ -76,9 +76,13 @@ export function updatePffMeta(meta: PffMeta, appVersion: string): PffMeta {
   };
 }
 
+function parseVersion(v: string): number[] {
+  return v.split('-')[0].split('.').map(part => parseInt(part, 10) || 0);
+}
+
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const diff = (pa[i] || 0) - (pb[i] || 0);
     if (diff !== 0) return diff;

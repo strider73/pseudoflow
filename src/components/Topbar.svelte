@@ -50,22 +50,27 @@
   };
 
   const newButtonClick = () => {
+    isMenuOpen = false;
     onNewButtonClick();
   };
 
   const importButtonClick = () => {
+    isMenuOpen = false;
     onImportButtonClick();
   };
 
   const exportButtonClick = () => {
+    isMenuOpen = false;
     onExportButtonClick();
   };
 
   const settingsButtonClick = () => {
+    isMenuOpen = false;
     onSettingsButtonClick();
   };
 
   const infoButtonClick = () => {
+    isMenuOpen = false;
     onInfoButtonClick();
   };
 
@@ -96,7 +101,7 @@
   <div class="left">
     <div id="menuWrapper">
       <div id="toggleButton">
-        <input type="checkbox" on:click={() => (isMenuOpen = !isMenuOpen)} />
+        <input type="checkbox" bind:checked={isMenuOpen} />
         <div>
           <span></span>
           <span></span>

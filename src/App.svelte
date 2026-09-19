@@ -59,13 +59,6 @@
        }
     }
 
-   // Fix modal title not updating after language change
-   translationStore.subscribe((translations) => {
-      if (modal) {
-         modal.title = translations.APP_SETTINGS_TITLE;
-      }
-   });
-
    // Re-parse when pseudocode language changes
    codeWordStore.subscribe(() => {
       lastPseudocode = '';
@@ -136,7 +129,6 @@
 
       if (parsed.oldFormat) {
          modal = {
-            title: '',
             component: FormatVersionModal,
          };
          return;
@@ -146,7 +138,6 @@
          const detected = detectLanguage(parsed.content);
          if (detected && detected !== codeWordLang) {
             modal = {
-               title: '',
                component: LanguageMismatchModal,
                componentProps: { fileLang: detected }
             };
@@ -155,7 +146,6 @@
 
       if (parsed.meta && parsed.meta.lang !== codeWordLang) {
          modal = {
-            title: '',
             component: LanguageMismatchModal,
             componentProps: { fileLang: parsed.meta.lang }
          };
@@ -192,7 +182,7 @@
    function newButtonClick() {
       if (pseudocode && pseudocode !== savedPseudocode) {
          modal = {
-            title: $translationStore.APP_SAVE_TITLE,
+            titleKey: 'APP_SAVE_TITLE',
             component: SaveModal,
             saveDialog: true
          };
@@ -271,7 +261,7 @@
    // Handle "Settings" button in top bar
    function settingsButtonClick() {
       modal = {
-         title: $translationStore.APP_SETTINGS_TITLE,
+         titleKey: 'APP_SETTINGS_TITLE',
          component: SettingsModal
       };
    }
@@ -279,7 +269,7 @@
     // Handle "Information" button in top bar
     function infoButtonClick() {
        modal = {
-          title: $translationStore.APP_INFO_TITLE,
+          titleKey: 'APP_INFO_TITLE',
           component: InformationModal
        };
     }
@@ -307,6 +297,8 @@
       isChartVisible = false;
       pseudocode = '';
       savedPseudocode = '';
+      lastPseudocode = '';
+      syntaxTree = { body: null };
       outputText = '';
       pendingSentencesToExecute = [];
       lastExecutedSentence = null;
@@ -396,7 +388,7 @@
 <input type="file" id="file-import" on:change={importDataFromFile} />
 
 {#if modal} 
-<Modal title="{modal.title}" component="{modal.component}" saveDialog="{modal.saveDialog}" componentProps="{modal.componentProps || {}}"
+<Modal title="{modal.titleKey ? $translationStore[modal.titleKey] : ''}" component="{modal.component}" saveDialog="{modal.saveDialog}" componentProps="{modal.componentProps || {}}"
    on:closeModal="{closeModal}"
    on:saveAndClose="{saveAndClose}"
    on:closeAndNew="{closeAndNew}"></Modal> 
