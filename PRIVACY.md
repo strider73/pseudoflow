@@ -2,7 +2,7 @@
 
 **Effective date:** August 11, 2026
 
-PseudoFlow uses a self-hosted instance of [Swetrix](https://swetrix.com), an open-source, privacy-focused analytics platform, to collect anonymous usage statistics.
+PseudoFlow uses a self-hosted instance of [Umami](https://umami.is), an open-source, privacy-focused analytics platform, to collect anonymous usage statistics.
 
 ## What we collect
 
@@ -10,7 +10,7 @@ PseudoFlow uses a self-hosted instance of [Swetrix](https://swetrix.com), an ope
 - Country-level location (derived from IP address)
 - Operating system (e.g. Windows, macOS, Linux)
 - Browser or webview type (e.g. Chrome, WebKit, WebView2)
-- Platform type (desktop app via Tauri, or web browser)
+- Platform (windows, mac, linux for the desktop app; web for the online app; dev for development builds), stored as an anonymous session property
 
 ## What we do not collect
 
@@ -23,7 +23,7 @@ PseudoFlow uses a self-hosted instance of [Swetrix](https://swetrix.com), an ope
 
 ## Data processor
 
-Analytics data is processed by a self-hosted Swetrix instance running on our own infrastructure. Data never leaves our servers and is not accessible by any third party, including Swetrix Ltd. Swetrix is open-source software ([AGPLv3](https://github.com/Swetrix/swetrix)) that does not use cookies and is GDPR-compliant by design.
+Analytics data is processed by a self-hosted Umami instance running on our own infrastructure. Data never leaves our servers and is not accessible by any third party. Umami is open-source software ([MIT](https://github.com/umami-software/umami)) that does not use cookies and is GDPR-compliant by design.
 
 ## Data retention
 
