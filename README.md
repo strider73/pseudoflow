@@ -9,7 +9,7 @@ A free and open source software developed to help programming students learn abo
 ## Features
 
 - **Real-time flowcharts** — Generates ANSI standard flowcharts as you type, rendered with Konva.js on an interactive zoomable canvas.
-- **Built-in interpreter** — Run your pseudocode directly in the app with step-by-step execution, variable tracking, and input/output support.
+- **Built-in interpreter** — Run your pseudocode directly in the app with input/output support.
 - **Bilingual pseudocode** — Switch between English and Spanish keywords in the Settings panel without changing the language of the UI.
 - **Cross-platform** — Desktop apps for Linux, macOS, and Windows (via Tauri), plus a fully functional web version.
 - **Code editor** — Custom editor with syntax highlighting, line numbers, tab indentation, and code templates.
@@ -43,7 +43,7 @@ The full language reference and example algorithms are hosted on the website:
 | Styling | SCSS |
 | Flowchart canvas | [Konva.js](https://konvajs.org/) |
 | Desktop shell | [Tauri](https://tauri.app/) v1 (Rust) |
-| Bundler | [Vite](https://vitejs.dev/) 3 |
+| Bundler | [Vite](https://vitejs.dev/) 4 |
 | L10n | Custom JSON-based i18n (EN / ES) |
 
 ---
