@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** August 11, 2026
+**Effective date:** September 19, 2026
 
 PseudoFlow uses a self-hosted instance of [Umami](https://umami.is), an open-source, privacy-focused analytics platform, to collect anonymous usage statistics.
 
@@ -11,14 +11,15 @@ PseudoFlow uses a self-hosted instance of [Umami](https://umami.is), an open-sou
 - Operating system (e.g. Windows, macOS, Linux)
 - Browser or webview type (e.g. Chrome, WebKit, WebView2)
 - Platform (windows, mac, linux for the desktop app; web for the online app; dev for development builds), stored as an anonymous session property
+- An anonymous random identifier stored in your browser (localStorage) so we can tell apart visitors that share the same network
 
 ## What we do not collect
 
 - No cookies are used
 - No personal data is collected or stored
-- No tracking across sites or sessions
+- No tracking across other websites or apps; the local identifier only links your visits to PseudoFlow
 - IP addresses are not stored
-- No individual user profiles or fingerprints
+- No profiles linked to your identity; the local identifier is random and cannot identify you
 - No data is shared with or sold to third parties
 
 ## Data processor
@@ -38,6 +39,7 @@ This anonymous data helps us understand how many people use PseudoFlow, from whi
 Since no personal data is collected, there is no personally identifiable information to access, modify, or delete. If you have concerns, you can:
 
 - Contact us to request deletion of all analytics data associated with your approximate location and device type
+- Clear your browser's site data for PseudoFlow to reset the anonymous identifier
 - Use the app without analytics by building from source and removing the tracking script
 
 ## Changes to this policy
