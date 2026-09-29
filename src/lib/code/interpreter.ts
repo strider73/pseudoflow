@@ -89,6 +89,9 @@ function callFunction(call: atype.CallNode): any {
    if (!fn && call.callee === 'randominteger') {
       return randomInteger(call);
    }
+   if (!fn && call.callee === 'randomreal') {
+      return randomReal(call);
+   }
    if (!fn) {
       throw new Error(`Function '${call.callee}' is not defined`);
    }
@@ -139,6 +142,21 @@ function randomInteger(call: atype.CallNode): number {
       throw new Error(`randominteger has no whole number between ${a} and ${b}`);
    }
    return low + Math.floor(Math.random() * (high - low + 1));
+}
+
+// A real number in [low, high): the lower bound can come up, the upper bound never does
+function randomReal(call: atype.CallNode): number {
+   if (call.args.length !== 2) {
+      throw new Error(`Function 'randomreal' expects 2 argument(s) but got ${call.args.length}`);
+   }
+   const [low, high] = call.args.map(arg => Number(safeEval(valueBuilder(arg))));
+   if (isNaN(low) || isNaN(high)) {
+      throw new Error(`randomreal needs two numbers`);
+   }
+   if (low >= high) {
+      throw new Error(`randomreal needs a lower bound below the upper bound, but got ${low} and ${high}`);
+   }
+   return low + Math.random() * (high - low);
 }
 
 function literalFromValue(value: any): string {

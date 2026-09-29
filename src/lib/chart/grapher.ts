@@ -32,22 +32,23 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
       y: defaultVerticalSpace
    }
 
-   // Function definitions are drawn as separate charts below the main program
+   // Only the process is charted: each 'Algorithm:' gets its own chart, and function
+   // definitions appear only as the call boxes inside it. Code with no 'Algorithm:'
+   // charts its main program, and statements outside every algorithm are settings
    const mainSentences = runningSentences.filter(node => node.name !== 'FunctionDefNode');
-   const functionDefs = runningSentences.filter(node => node.name === 'FunctionDefNode') as atype.FunctionDefNode[];
+   const algorithms: { title: string, body: atype.SentencesNode[] }[] = [];
+   mainSentences.forEach(node => {
+      if (node.name === 'AlgorithmNode') algorithms.push({ title: node.title, body: [] });
+      else algorithms.at(-1)?.body.push(node);
+   });
 
-   if (mainSentences.length) {
+   if (!algorithms.length && mainSentences.length) {
       drawSequence(mainSentences);
    }
 
-   functionDefs.forEach(fn => {
-      chartDimensions.y += defaultVerticalSpace;
-      const endsWithReturn = fn.body.at(-1)?.name === 'ReturnNode';
-      drawSequence(
-         fn.body,
-         fn.identifier + '(' + fn.params.join(', ') + ')',
-         endsWithReturn ? undefined : reservedWords.CODE_ENDDEFINE
-      );
+   algorithms.forEach((algorithm, index) => {
+      if (index > 0) chartDimensions.y += defaultVerticalSpace;
+      drawSequence(algorithm.body, algorithm.title || 'Algorithm');
    });
 
    return chartDimensions;
@@ -85,8 +86,8 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
          columnSymbol = [];
       }
 
-      // A function whose last step is a return already ends there
-      if (startLabel !== undefined && endLabel === undefined) {
+      // A sequence whose last step is a return already ends there
+      if (sequence.at(-1)?.name === 'ReturnNode') {
          chartDimensions.y += defaultVerticalSpace * 0.5;
          return;
       }

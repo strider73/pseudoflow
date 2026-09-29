@@ -43,6 +43,7 @@ export type CloseBracketToken =        { name: 'CloseBracketToken', rule?: RegEx
 export type CommaToken =               { name: 'CommaToken', rule?: RegExp, value?: string };
 export type DotToken =                 { name: 'DotToken', rule?: RegExp, value?: string };
 export type OtherToken =               { name: 'OtherToken', rule?: RegExp, value?: string };
+export type AlgorithmToken =           { name: 'AlgorithmToken', rule?: RegExp, value?: string };
 
 export type ArithmeticToken = 
    AdditionToken              | 
@@ -69,6 +70,7 @@ export type Token = { line?: number, indent?: number } & (
    ReadToken                  | 
    DefineToken                | 
    CloseDefineToken           | 
+   AlgorithmToken             | 
    ReturnToken                | 
    AssignmentToken            | 
    OpenParenToken             | 
@@ -116,6 +118,8 @@ export type RepeatNode =               { name: 'RepeatNode', declaration: Declar
 export type WhileNode =                { name: 'WhileNode', argument: Node, body: SentencesNode[]};
 export type DowhileNode =              { name: 'DowhileNode', argument: Node, body: SentencesNode[], do: boolean};
 export type FunctionDefNode =          { name: 'FunctionDefNode', identifier: string, params: string[], body: SentencesNode[], line?: number };
+// Marks where an 'Algorithm: <title>' starts; the statements after it, up to the next one, are its body
+export type AlgorithmNode =            { name: 'AlgorithmNode', title: string, line?: number };
 export type ReturnNode =               { name: 'ReturnNode', value?: Node };
 export type CallStatementNode =        { name: 'CallStatementNode', call: CallNode };
 export type CallNode =                 { name: 'CallNode', callee: string, args: Node[] };
@@ -143,6 +147,7 @@ export type SentencesNode =
    WhileNode                  | 
    DowhileNode                | 
    FunctionDefNode            | 
+   AlgorithmNode              | 
    ReturnNode                 | 
    CallStatementNode          |
    OpenFileNode               |

@@ -55,6 +55,8 @@ const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥'
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const SUPERSCRIPT_RUN = new RegExp('^[' + SUPERSCRIPT_DIGITS + ']+$');
 const END_PREFIXES = ['end', 'fin'];
+// 'Algorithm: <title>' keeps its title as written, so it can label the chart
+const ALGORITHM_HEADER = /^[ \t]*algorithm[ \t]*:[ \t]*(.*?)[ \t]*$/i;
 
 function buildWordAliases(word: typeof englishWords): Record<string, string> {
    return {
@@ -108,6 +110,15 @@ export const lexer = (code: string) : Array<atype.Token> => {
       lastIndex = regex.lastIndex;
 
       const indent = indentAt(code, lineStart);
+      if (code.slice(lineStart, match.index).trim() === '') {
+         const lineEnd = code.indexOf('\n', match.index) < 0 ? code.length : code.indexOf('\n', match.index);
+         const header = code.slice(lineStart, lineEnd).match(ALGORITHM_HEADER);
+         if (header) {
+            tokens.push({ name: 'AlgorithmToken', value: header[1], line, indent } as atype.Token);
+            regex.lastIndex = lastIndex = lineEnd;
+            continue;
+         }
+      }
       // Superscript digits are a power: 10⁷ is 10^7, 2¹⁰ is 2^10
       if (SUPERSCRIPT_RUN.test(match[0])) {
          const exponent = [...match[0]].map(c => SUPERSCRIPT_DIGITS.indexOf(c)).join('');

@@ -13,7 +13,7 @@ let insideDefine = false;
 const STATEMENT_START_TOKENS = [
    'DeclarationToken', 'PrintToken', 'ReadToken', 'IdentifierToken',
    'OpenIfToken', 'OpenSwitchToken', 'OpenRepeatToken',
-   'OpenWhileToken', 'OpenDowhileToken', 'DefineToken', 'ReturnToken'
+   'OpenWhileToken', 'OpenDowhileToken', 'DefineToken', 'ReturnToken', 'AlgorithmToken'
 ];
 
 export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[], errors: atype.AnalysisError[] } => {
@@ -69,6 +69,16 @@ function parse() : atype.SentencesNode[] {
    else if (isCommandStatement()) {
       return [commandParser()];
    }
+   else if (token.name === 'AlgorithmToken') {
+      if (insideDefine) {
+         throw new SyntaxError(`An algorithm cannot start inside a function. End the function before 'Algorithm:'.`);
+      }
+      return [{ name: 'AlgorithmNode', title: token.value!, line: token.line }];
+   }
+   else if (isHeaderLine()) {
+      skipRestOfLine();
+      return [];
+   }
    else if (token.name === 'IdentifierToken' && parserTokens[parserIndex + 1]?.name === 'OpenParenToken') {
       return [{ name: 'CallStatementNode', call: callParser() }];
    }
@@ -113,6 +123,23 @@ function parse() : atype.SentencesNode[] {
    }
 
    throw new SyntaxError(`Unexpected '${token.value || token.name}'. A statement like declare, if, while, or an identifier was expected here.`);
+}
+
+// 'Input: <text>' and 'Output: <text>' describe the code that follows; they are read as
+// headings, not statements. 'Algorithm:' is its own token, since it starts a chart
+const HEADER_WORDS = ['input', 'output'];
+
+function isHeaderLine(): boolean {
+   const token = parserTokens[parserIndex];
+   const next = parserTokens[parserIndex + 1];
+   return token.name === 'IdentifierToken' && HEADER_WORDS.includes(token.value!.toLowerCase()) &&
+      next?.line === token.line && next.value === ':';
+}
+
+// Leaves the index on the last token of the line, as a finished statement does
+function skipRestOfLine() {
+   const line = parserTokens[parserIndex].line;
+   while (parserTokens[parserIndex + 1]?.line === line) parserIndex++;
 }
 
 function nextIndex() {
@@ -194,6 +221,13 @@ function atomParser(): atype.Node {
       parserTokens[parserIndex + 2]?.value === 'from'
    ) {
       return randomPhraseParser();
+   }
+
+   if (
+      token.name === 'IdentifierToken' && token.value === 'random' &&
+      parserTokens[parserIndex + 1]?.value === 'real'
+   ) {
+      return randomRealPhraseParser();
    }
 
    if (
@@ -896,6 +930,42 @@ function randomPhraseParser(): atype.CallNode {
    }
 
    return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
+}
+
+// random real [number] from <low> [(inclusive)] to <high> [(exclusive)]  ->  randomreal(low, high)
+// The range is always [low, high): the markers only restate it, so they are accepted but not required
+function randomRealPhraseParser(): atype.CallNode {
+   nextIndex(); // 'real'
+   if (parserTokens[parserIndex + 1]?.value === 'number') nextIndex();
+   nextIndex();
+   if (parserTokens[parserIndex].value !== 'from') {
+      throw new SyntaxError(`Expected 'from' in 'random real number from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
+   }
+   nextIndex();
+   const low = expressionParser();
+   skipBoundMarker('inclusive');
+   nextIndex();
+   if (parserTokens[parserIndex].value !== 'to') {
+      throw new SyntaxError(`Expected 'to' in 'random real number from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
+   }
+   nextIndex();
+   const high = expressionParser();
+   skipBoundMarker('exclusive');
+
+   return { name: 'CallNode', callee: 'randomreal', args: [low, high] };
+}
+
+// Skips 'inclusive' or '(inclusive)' after a bound; any other marker is an error
+function skipBoundMarker(expected: string) {
+   const at = (offset: number) => parserTokens[parserIndex + offset];
+   const bracketed = at(1)?.name === 'OpenParenToken' && ['inclusive', 'exclusive'].includes(at(2)?.value!) && at(3)?.name === 'CloseParenToken';
+   const bare = ['inclusive', 'exclusive'].includes(at(1)?.value!);
+   if (!bracketed && !bare) return;
+   const marker = bracketed ? at(2).value : at(1).value;
+   if (marker !== expected) {
+      throw new SyntaxError(`A random real number includes its lower bound and excludes its upper bound, so this bound must be '${expected}', not '${marker}'.`);
+   }
+   parserIndex += bracketed ? 3 : 1;
 }
 
 // an integer drawn uniformly at random from [<low>, <high>] -> randominteger(low, high)

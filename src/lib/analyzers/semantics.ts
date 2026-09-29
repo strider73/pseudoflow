@@ -6,7 +6,7 @@ type ValueType = 'number' | 'string' | 'boolean' | 'array'
 const ARITHMETIC_OPS = ['+', '-', '*', '/', '%', '^']
 const COMPARISON_OPS = ['==', '!=', '<', '>', '<=', '>=']
 const BOOLEAN_OPS = ['&&', '||']
-export const BUILTIN_FUNCTIONS: Record<string, number> = { randominteger: 2 }
+export const BUILTIN_FUNCTIONS: Record<string, number> = { randominteger: 2, randomreal: 2 }
 
 export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): AnalysisError[] {
    const errors: AnalysisError[] = []
@@ -173,7 +173,7 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'FileReadNode':
             return node.kind === 'integer' || node.kind === 'number' ? 'number' : 'string'
          case 'CallNode':
-            return node.callee === 'randominteger' && !functions.has(node.callee) ? 'number' : undefined
+            return node.callee in BUILTIN_FUNCTIONS && !functions.has(node.callee) ? 'number' : undefined
          default:
             return undefined
       }
@@ -224,7 +224,8 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             checkTypeInValue(node.index)
             break
          case 'IdentifierNode':
-            checkDeclared(node.value!)
+            // A defined function's name can be passed as a value: gen_mixed_sequence(L, gen_pop, p)
+            if (!functions.has(node.value!)) checkDeclared(node.value!)
             break
          case 'PropertyAccessNode':
             checkTypeInValue(node.object)
@@ -244,14 +245,17 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
    function checkCall(node: atype.CallNode) {
       const fn = functions.get(node.callee)
       const arity = fn ? fn.params.length : BUILTIN_FUNCTIONS[node.callee]
-      if (arity === undefined) {
+      // A variable can hold a function passed in as a parameter; its arity is unknown until it runs
+      const callsVariable = !fn && findSymbol(node.callee) !== undefined
+      if (arity === undefined && !callsVariable) {
          errors.push({ type: 'semantic', message: `Function '${node.callee}' is not defined` })
       }
-      else if (arity !== node.args.length) {
+      else if (arity !== undefined && arity !== node.args.length) {
          errors.push({ type: 'semantic', message: `Function '${node.callee}' expects ${arity} argument(s) but got ${node.args.length}` })
       }
       node.args.forEach(arg => {
-         checkArrayInScalarContext(arg)
+         // Lists can be passed to defined functions; the builtins only take numbers
+         if (!fn) checkArrayInScalarContext(arg)
          checkTypeInValue(arg)
       })
    }
