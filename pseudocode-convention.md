@@ -30,6 +30,109 @@ Source: `Thomas Nobes_review.md` in this folder. Where it differs from VCAA, the
 4. **No hardcoding**: the generator, heap, array and experiment runner take parameters or named settings, and functions are passed in as inputs.
 5. **Remove AI or translation leftovers by hand**: the work must be your own.
 
+## Rules PseudoFlow reads
+
+PseudoFlow reads the `convention` blocks in this section; everything else in this file is for people. To change what PseudoFlow accepts, change a block here and its sentence next to it. `npm test` then checks every example in this file still parses.
+
+Block format: YAML. Each top-level key appears in one block only. Write phrases in single quotes.
+
+### Symbols
+
+Maths symbols and upper-case words are read as PseudoFlow's own spelling: `a ≠ b` is `a != b`, `x mod 2` is `x % 2`. Assignment is `←` or `=`.
+
+```convention
+assignment: ['←', '=']
+symbols:
+  '≠': '!='
+  '≤': '<='
+  '≥': '>='
+  '×': '*'
+  '÷': '/'
+  '{': '('
+  '}': ')'
+  'mod': '%'
+  'MOD': '%'
+```
+
+### Words and line shapes
+
+- `and`, `or`, `not` may be written in capitals.
+- A block may be closed with two words: `end if`, `end for` (`fin` is the Spanish form).
+- The letter `x` between two values on one line means times: `product x i`.
+- A run of superscript digits is a power: `i²`, `10⁷`.
+- `(1, key)` in brackets is a tuple, kept as a list.
+- Without `enddefine`, a function ends where the indentation returns to the level of `define`.
+
+```convention
+words:
+  upperCaseLogic: true
+  endPrefixes: [end, fin]
+  letterTimes: x
+  superscriptPowers: true
+  bracketTuples: true
+  defineEndsByIndent: true
+```
+
+### Headings
+
+A heading is a word followed by `:` at the start of a line. `chart` starts an algorithm that gets its own flowchart; `skip` is a description only. Case does not matter.
+
+```convention
+headings:
+  Algorithm: chart
+  Input: skip
+  Output: skip
+```
+
+### Commands
+
+Statements that start with a plain word. `open f for reading|writing`, `close f`, `append v to list`, `report v`. `read next <kind> from f` reads from a file.
+
+```convention
+commands: [open, close, append, report]
+fileRead:
+  kinds: [integer, number, line, word]
+```
+
+### Phrases
+
+Phrases are written in words and read as a value. PseudoFlow tries them in order and the first match wins, so the more specific form goes first.
+
+- `{name}` is a value; the value ends at the next word of the phrase.
+- `[...]` is optional; `a|b` accepts either word; `\[` and `\]` are literal brackets.
+- After `->` is what the phrase means.
+
+```convention
+phrases:
+  - 'random integer from {low} to {high} exclusive -> randominteger(low, high - 1)'
+  - 'random integer from {low} to {high} [inclusive] -> randominteger(low, high)'
+  - 'random real [number] from {low} [(inclusive)] to {high} [(exclusive)] -> randomreal(low, high)'
+  - 'an integer drawn uniformly at random from \[{low}, {high}\] -> randominteger(low, high)'
+  - 'empty list|array -> []'
+  - 'new list|array indexed from {low} to {high} -> []'
+  - 'new list|array of size {size} -> []'
+  - 'new list|array -> []'
+```
+
+Bounds can be names as well as numbers:
+
+```
+a ← 0
+b ← 1
+r ← random real number from a (inclusive) to b (exclusive)
+print r
+```
+
+### Built-in functions
+
+Functions every program can call, with their number of inputs. `randominteger(a, b)` is a whole number from `a` to `b`, inclusive; `randomreal(a, b)` is a real number from `a` (inclusive) to `b` (exclusive).
+
+```convention
+builtins:
+  randominteger: 2
+  randomreal: 2
+```
+
 ---
 
 ## Pseudocode

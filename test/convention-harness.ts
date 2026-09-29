@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
 import { analyze } from '../src/lib/analyzers/analyze';
+import { loadConvention } from '../src/lib/convention/loader';
 
 const ROOT = join(import.meta.dirname, '..');
 const CONVENTION = join(ROOT, 'pseudocode-convention.md');
@@ -66,6 +67,15 @@ function pffFiles(): Source[] {
       const name = path.startsWith(ROOT) ? relative(ROOT, path) : basename(path);
       return { name: 'pff: ' + name, code };
    });
+}
+
+// The rules themselves must load before any example is worth checking
+try {
+   const convention = loadConvention(readFileSync(CONVENTION, 'utf8'));
+   console.log(`✓ convention loads: ${convention.phrases.length} phrases, ${Object.keys(convention.headings).length} headings, ${Object.keys(convention.builtins).length} builtins\n`);
+} catch (e) {
+   console.log(`✗ convention does not load: ${(e as Error).message}`);
+   process.exit(1);
 }
 
 const update = process.argv.includes('--update');
