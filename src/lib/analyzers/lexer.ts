@@ -52,7 +52,8 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
 // spelling, so the rest of the pipeline only ever sees one form
 // Braces are accepted as brackets so LaTeX-style powers like 2^{n+1} work
 const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥': '>=', '×': '*', '÷': '/', '{': '(', '}': ')' };
-const SUPERSCRIPT_POWERS: Record<string, string> = { '²': '2', '³': '3' };
+const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const SUPERSCRIPT_RUN = new RegExp('^[' + SUPERSCRIPT_DIGITS + ']+$');
 const END_PREFIXES = ['end', 'fin'];
 
 function buildWordAliases(word: typeof englishWords): Record<string, string> {
@@ -89,7 +90,7 @@ export const lexer = (code: string) : Array<atype.Token> => {
    // remove comments
    code = code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g,'');
    // separate words to lexer
-    const regex = /(["'])(?:(?=(\\?))\2.)*?\1|(?:[=&|+<>/*%!~-]{1,2})|(\-?\d?)+\.?\d+|(?:[\\(){}[\];\:\?]|(?:\w+))|[^\s]/g;
+    const regex = /(["'])(?:(?=(\\?))\2.)*?\1|(?:[=&|+<>/*%!~-]{1,2})|(\-?\d?)+\.?\d+|(?:[\\(){}[\];\:\?]|(?:\w+))|[⁰¹²³⁴⁵⁶⁷⁸⁹]+|[^\s]/g;
 
    let tokens : Array<atype.Token> = [];
    let match;
@@ -107,9 +108,11 @@ export const lexer = (code: string) : Array<atype.Token> => {
       lastIndex = regex.lastIndex;
 
       const indent = indentAt(code, lineStart);
-      if (Object.prototype.hasOwnProperty.call(SUPERSCRIPT_POWERS, match[0])) {
+      // Superscript digits are a power: 10⁷ is 10^7, 2¹⁰ is 2^10
+      if (SUPERSCRIPT_RUN.test(match[0])) {
+         const exponent = [...match[0]].map(c => SUPERSCRIPT_DIGITS.indexOf(c)).join('');
          tokens.push({ name: 'PowerToken', value: '^', line, indent } as atype.Token);
-         tokens.push({ name: 'NumericToken', value: SUPERSCRIPT_POWERS[match[0]], line, indent } as atype.Token);
+         tokens.push({ name: 'NumericToken', value: exponent, line, indent } as atype.Token);
          continue;
       }
 

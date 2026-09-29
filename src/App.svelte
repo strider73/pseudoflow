@@ -59,8 +59,9 @@
    let activeTabId = tabs[0].id;
    let tabPendingClose: number | null = null;
 
-   $: tabList = tabs.map(t => ({ id: t.id, name: t.name, path: t.path, modified: isModified(t) }));
    $: syncActiveTab(pseudocode, savedPseudocode, pffMeta, $fileNameStore);
+   // Must come after syncActiveTab so the tab bar sees the tab it just updated
+   $: tabList = tabs.map(t => ({ id: t.id, name: t.name, path: t.path, modified: isModified(t) }));
 
    function createTab(): DocTab {
       return { id: nextTabId++, name: defaultName, path: null, pseudocode: '', savedPseudocode: '', pffMeta: null };
@@ -141,7 +142,9 @@
       const reusable = current.path === null && !current.pseudocode && !isModified(current);
       if (!reusable) newTab();
       loadFileContent(rawText, fileName);
+      activeTab().name = fileName;
       activeTab().path = path;
+      if (path) lastFolder = path.slice(0, path.length - baseName(path).length);
       tabs = tabs;
    }
 
@@ -318,9 +321,35 @@
 		reader.readAsText(e.target.files[0], "UTF-8");
     }
 
-   // Handle "New Page" button in top bar
-   function newButtonClick() {
-      newTab();
+   // Folder of the active file, or of the last file opened or saved
+   let lastFolder = '';
+   function currentFolder(): string {
+      const path = activeTab().path;
+      return path ? path.slice(0, path.length - baseName(path).length) : lastFolder;
+   }
+
+   // Handle "New file" button in top bar: ask for a name in the current folder,
+   // create the empty file there and open it in a new tab
+   async function newButtonClick() {
+      if (!isTauri) {
+         newTab();
+         return;
+      }
+      try {
+         const { save } = await import("@tauri-apps/api/dialog");
+         const { invoke } = await import("@tauri-apps/api/tauri");
+         let filePath = await save({
+            defaultPath: currentFolder() + 'untitled.pff',
+            filters: [{ name: 'PseudoFlow', extensions: ['pff'] }]
+         });
+         if (!filePath) return;
+         if (!/\.pff$/i.test(filePath)) filePath += '.pff';
+         const fileContents = serializePffFile(createPffMeta(codeWordLang, APP_VERSION), '');
+         await invoke('save_file', { path: filePath, contents: fileContents });
+         openInTab(fileContents, filePath, baseName(filePath));
+      } catch (err) {
+         console.error('Tauri API error:', err);
+      }
    }
 
    // Handle "Open" button in top bar
@@ -328,7 +357,7 @@
       if (isTauri) {
           import("@tauri-apps/api/dialog").then(async ({ open }) => {
             const { readTextFile } = await import("@tauri-apps/api/fs");
-            const selected = await open({ defaultPath: activeTab().path ?? $fileNameStore, multiple: true });
+            const selected = await open({ defaultPath: currentFolder() || undefined, multiple: true });
             const filePaths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
             for (const filePath of filePaths) {
                const data = await readTextFile(filePath);
@@ -396,6 +425,7 @@
 
             // The user may have switched tabs while the dialog was open
             tab.path = filePath;
+            lastFolder = filePath.slice(0, filePath.length - baseName(filePath).length);
             if (tab.id === activeTabId) {
                fileNameStore.set(baseName(filePath));
                savedPseudocode = contentAtSave;
