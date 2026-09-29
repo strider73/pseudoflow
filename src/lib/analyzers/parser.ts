@@ -215,6 +215,39 @@ function atomParser(): atype.Node {
       return { name: 'ArrayNode', elements: [] };
    }
 
+   // 'new array', 'new array indexed from 1 to n' and 'new array of size n' also
+   // start empty; the bounds are checked but the array grows as it is written to
+   if (
+      token.name === 'IdentifierToken' && token.value === 'new' &&
+      nextToken?.line === token.line && (nextToken.value === 'list' || nextToken.value === 'array')
+   ) {
+      nextIndex();
+      const line = parserTokens[parserIndex].line;
+      const ahead = (offset: number) => {
+         const t = parserTokens[parserIndex + offset];
+         return t?.line === line ? t.value : undefined;
+      };
+      if (ahead(1) === 'indexed' && ahead(2) === 'from') {
+         nextIndex();
+         nextIndex();
+         nextIndex();
+         expressionParser(0);
+         nextIndex();
+         if (parserTokens[parserIndex]?.value !== 'to') {
+            throw new SyntaxError("Expected 'to' in 'new array indexed from ... to ...'.");
+         }
+         nextIndex();
+         expressionParser(0);
+      }
+      else if (ahead(1) === 'of' && ahead(2) === 'size') {
+         nextIndex();
+         nextIndex();
+         nextIndex();
+         expressionParser(0);
+      }
+      return { name: 'ArrayNode', elements: [] };
+   }
+
    if (token.name === 'OpenParenToken') {
       nextIndex();
       const inner = expressionParser(0);

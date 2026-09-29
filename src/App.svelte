@@ -455,6 +455,69 @@
       }
    }
 
+   // When the window gets focus again, pick up files changed by another editor.
+   // A tab without unsaved edits reloads quietly; otherwise the user chooses.
+   let checkingDisk = false;
+   onMount(() => {
+      if (!isTauri) return;
+      let unlisten: (() => void) | undefined;
+      import("@tauri-apps/api/window").then(async ({ appWindow }) => {
+         unlisten = await appWindow.onFocusChanged(({ payload: focused }) => {
+            if (focused && sessionRestored) reloadChangedFiles();
+         });
+      }).catch(err => console.error('Tauri API error:', err));
+      return () => unlisten?.();
+   });
+
+   async function reloadChangedFiles() {
+      if (checkingDisk) return;
+      checkingDisk = true;
+      try {
+         // Take the editor's latest text so recent typing counts as an unsaved edit
+         const current = editorRef?.getCurrentText();
+         if (current !== undefined && current !== pseudocode) pseudocode = current;
+         syncActiveTab();
+         const { readTextFile } = await import("@tauri-apps/api/fs");
+         const { ask } = await import("@tauri-apps/api/dialog");
+         for (const tab of tabs.filter(t => t.path)) {
+            let parsed: ParseResult;
+            try {
+               parsed = parsePffFile(await readTextFile(tab.path!));
+            } catch {
+               continue; // moved or deleted; keep what is open
+            }
+            if (parsed.content === tab.savedPseudocode) continue;
+
+            const reload = !isModified(tab) || await ask(
+               `"${tab.name}" was changed by another program. Reload it and lose your unsaved changes here?`,
+               { title: 'File changed on disk', type: 'warning' }
+            );
+            if (reload) {
+               tab.pseudocode = parsed.content;
+               tab.undo = undefined;
+            }
+            // Either way the disk version is now the saved one, so this is not asked again
+            tab.savedPseudocode = parsed.content;
+            tab.pffMeta = parsed.meta;
+            if (tab.id === activeTabId) {
+               pffMeta = tab.pffMeta;
+               savedPseudocode = tab.savedPseudocode;
+               if (reload) {
+                  pseudocode = tab.pseudocode;
+                  editorRef?.resetUndo();
+                  lastPseudocode = '';
+                  generateTree();
+               }
+            }
+         }
+         tabs = tabs;
+      } catch (err) {
+         console.error('Could not check files on disk:', err);
+      } finally {
+         checkingDisk = false;
+      }
+   }
+
    async function openQueuedFiles() {
       try {
          const { invoke } = await import("@tauri-apps/api/tauri");
