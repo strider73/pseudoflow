@@ -3,6 +3,8 @@
     import { translationStore, defaultName, fileNameStore, flowchartDrawingStore, errorStore, syntaxErrorsStore, codeWordLang, codeWordStore, APP_VERSION } from "./lib/stores";
    import type * as atype from "./lib/analyzers/atypes"
    import Topbar from "./components/Topbar.svelte";
+   import TabBar from "./components/TabBar.svelte";
+   import type { EditorUndo } from "./lib/undo";
    import Editor from "./components/Editor.svelte";
    import Output from "./components/Output.svelte";
    import Chart from "./components/Chart.svelte";
@@ -41,11 +43,148 @@
     let pointerStartX, rightColumnStartWidth;
     let editorRef: any;
 
+   // Open documents. The active one lives in the page variables above
+   // (pseudocode, savedPseudocode, pffMeta, fileNameStore); the others are parked here.
+   type DocTab = {
+      id: number,
+      name: string,
+      path: string | null,
+      pseudocode: string,
+      savedPseudocode: string,
+      pffMeta: PffMeta | null,
+      undo?: EditorUndo
+   };
+   let nextTabId = 1;
+   let tabs: DocTab[] = [createTab()];
+   let activeTabId = tabs[0].id;
+   let tabPendingClose: number | null = null;
+
+   $: tabList = tabs.map(t => ({ id: t.id, name: t.name, path: t.path, modified: isModified(t) }));
+   $: syncActiveTab(pseudocode, savedPseudocode, pffMeta, $fileNameStore);
+
+   function createTab(): DocTab {
+      return { id: nextTabId++, name: defaultName, path: null, pseudocode: '', savedPseudocode: '', pffMeta: null };
+   }
+
+   function isModified(tab: DocTab): boolean {
+      return (tab.pseudocode || '') !== (tab.savedPseudocode || '');
+   }
+
+   function activeTab(): DocTab {
+      return tabs.find(t => t.id === activeTabId)!;
+   }
+
+   function baseName(path: string): string {
+      return path.split(/(\\|\/)/g).pop()!;
+   }
+
+   // Copy the page state into the active tab so the tab bar and switching see it
+   function syncActiveTab(..._deps: unknown[]) {
+      const tab = tabs?.find(t => t.id === activeTabId);
+      if (!tab) return;
+      tab.pseudocode = pseudocode || '';
+      tab.savedPseudocode = savedPseudocode || '';
+      tab.pffMeta = pffMeta;
+      tab.name = $fileNameStore;
+      tabs = tabs;
+   }
+
+   function switchTab(id: number) {
+      if (id === activeTabId || !tabs.some(t => t.id === id)) return;
+      syncActiveTab();
+      const current = activeTab();
+      const target = tabs.find(t => t.id === id)!;
+
+      // Stop anything running for the tab being left
+      isProgramRunning = false;
+      enableUserInput = false;
+      interpreterReset();
+      outputText = '';
+      clearTimeout(timeoutToParse);
+      clearInterval(versionWarningTimer);
+      showNewVersionWarning = false;
+
+      if (editorRef) current.undo = editorRef.swapUndo(target.undo);
+      activeTabId = id;
+      pffMeta = target.pffMeta;
+      savedPseudocode = target.savedPseudocode;
+      pseudocode = target.pseudocode;
+      fileNameStore.set(target.name);
+      lastPseudocode = '';
+      syntaxTree = { body: null };
+      errorStore.set([]);
+      generateTree();
+   }
+
+   function newTab() {
+      syncActiveTab();
+      const tab = createTab();
+      tabs = [...tabs, tab];
+      switchTab(tab.id);
+   }
+
+   function cycleTab(step: number) {
+      const index = tabs.findIndex(t => t.id === activeTabId);
+      switchTab(tabs[(index + step + tabs.length) % tabs.length].id);
+   }
+
+   // Opens a file in its own tab; an already open file just gets focused, and an
+   // empty untitled tab is reused instead of leaving it behind
+   function openInTab(rawText: string, path: string | null, fileName: string) {
+      syncActiveTab();
+      const existing = path ? tabs.find(t => t.path === path) : undefined;
+      if (existing) {
+         switchTab(existing.id);
+         return;
+      }
+      const current = activeTab();
+      const reusable = current.path === null && !current.pseudocode && !isModified(current);
+      if (!reusable) newTab();
+      loadFileContent(rawText, fileName);
+      activeTab().path = path;
+      tabs = tabs;
+   }
+
+   function closeTab(id: number) {
+      syncActiveTab();
+      const tab = tabs.find(t => t.id === id);
+      if (!tab) return;
+      if (isModified(tab)) {
+         switchTab(id);
+         tabPendingClose = id;
+         modal = {
+            titleKey: 'APP_SAVE_TITLE',
+            component: SaveModal,
+            saveDialog: true
+         };
+         return;
+      }
+      removeTab(id);
+   }
+
+   function removeTab(id: number) {
+      const index = tabs.findIndex(t => t.id === id);
+      if (index < 0) return;
+      if (tabs.length === 1) {
+         const fresh = createTab();
+         tabs = [...tabs, fresh];
+         switchTab(fresh.id);
+      }
+      else if (id === activeTabId) {
+         const neighbour = tabs[index + 1] ?? tabs[index - 1];
+         switchTab(neighbour.id);
+      }
+      tabs = tabs.filter(t => t.id !== id);
+   }
+
     function handleWindowKeydown(event: KeyboardEvent) {
        clearTimeout(timeoutToParse);
        timeoutToParse = setTimeout(generateTree, 350);
 
-       if (event.code === 'F5') {
+       if (event.ctrlKey && event.code === 'Tab') {
+          event.preventDefault();
+          cycleTab(event.shiftKey ? -1 : 1);
+       } else if (event.code === 'F5') {
           event.preventDefault();
           if (!isProgramRunning) {
              isProgramRunning = true;
@@ -174,23 +313,14 @@
 
        const reader = new FileReader();
 		reader.addEventListener("load", (event) => {
-          loadFileContent(event.target.result.toString(), fileName);
+          openInTab(event.target.result.toString(), null, fileName);
 		});
 		reader.readAsText(e.target.files[0], "UTF-8");
     }
 
    // Handle "New Page" button in top bar
    function newButtonClick() {
-      if (pseudocode && pseudocode !== savedPseudocode) {
-         modal = {
-            titleKey: 'APP_SAVE_TITLE',
-            component: SaveModal,
-            saveDialog: true
-         };
-      }
-      else {
-         newDocument();
-      }
+      newTab();
    }
 
    // Handle "Open" button in top bar
@@ -198,13 +328,11 @@
       if (isTauri) {
           import("@tauri-apps/api/dialog").then(async ({ open }) => {
             const { readTextFile } = await import("@tauri-apps/api/fs");
-            const filePath = await open({ defaultPath: $fileNameStore });
-            if (filePath) {
-               const data = await readTextFile(filePath as string);
-               loadFileContent(
-                  data.toString(),
-                  (filePath as string).split(/(\\|\/)/g).pop()
-               );
+            const selected = await open({ defaultPath: activeTab().path ?? $fileNameStore, multiple: true });
+            const filePaths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
+            for (const filePath of filePaths) {
+               const data = await readTextFile(filePath);
+               openInTab(data.toString(), filePath, baseName(filePath));
             }
           }).catch(err => console.error('Tauri API error:', err));
       } else {
@@ -228,26 +356,21 @@
       try {
          const { invoke } = await import("@tauri-apps/api/tauri");
          const paths = await invoke<string[]>('take_opened_files');
-         const filePath = paths[paths.length - 1];
-         if (!filePath) return;
-         const fileName = filePath.split(/(\\|\/)/g).pop();
-
-         if (pseudocode && pseudocode !== savedPseudocode) {
-            const { ask } = await import("@tauri-apps/api/dialog");
-            const discard = await ask(`Discard your unsaved changes and open ${fileName}?`, { title: 'PseudoFlow', type: 'warning' });
-            if (!discard) return;
-         }
-
          const { readTextFile } = await import("@tauri-apps/api/fs");
-         const data = await readTextFile(filePath);
-         loadFileContent(data.toString(), fileName);
+         for (const filePath of paths) {
+            const data = await readTextFile(filePath);
+            openInTab(data.toString(), filePath, baseName(filePath));
+         }
       } catch (err) {
          console.error('Could not open file:', err);
       }
    }
 
-   // Handle "Save" button in top bar
-   function exportButtonClick() {
+   // Handle "Save" button in top bar. A tab with a known file is saved in place;
+   // otherwise (or after renaming it in the file box) a save dialog asks where.
+   async function exportButtonClick(): Promise<boolean> {
+      const tab = activeTab();
+      const contentAtSave = pseudocode;
       const contentChanged = pseudocode !== savedPseudocode;
       let meta: PffMeta;
       if (pffMeta) {
@@ -258,17 +381,34 @@
       const fileContents = serializePffFile(meta, pseudocode);
 
       if (isTauri) {
-          import("@tauri-apps/api/dialog").then(async ({ save }) => {
+         try {
             const { invoke } = await import("@tauri-apps/api/tauri");
-            const filePath = await save({ defaultPath: $fileNameStore });
-            if (filePath) {
-               await invoke('save_file', { path: filePath, contents: fileContents });
-               fileNameStore.set(filePath.split(/(\\|\/)/g).pop());
-               savedPseudocode = pseudocode;
-               pffMeta = meta;
+            let filePath = tab.path && baseName(tab.path) === $fileNameStore ? tab.path : null;
+            if (!filePath) {
+               const { save } = await import("@tauri-apps/api/dialog");
+               const folder = tab.path ? tab.path.slice(0, tab.path.length - baseName(tab.path).length) : '';
+               filePath = await save({ defaultPath: folder + $fileNameStore });
             }
-          }).catch(err => console.error('Tauri API error:', err));
-          return false;
+            if (!filePath) return false;
+            await invoke('save_file', { path: filePath, contents: fileContents });
+
+            // The user may have switched tabs while the dialog was open
+            tab.path = filePath;
+            if (tab.id === activeTabId) {
+               fileNameStore.set(baseName(filePath));
+               savedPseudocode = contentAtSave;
+               pffMeta = meta;
+            } else {
+               tab.name = baseName(filePath);
+               tab.savedPseudocode = contentAtSave;
+               tab.pffMeta = meta;
+            }
+            tabs = tabs;
+            return true;
+         } catch (err) {
+            console.error('Tauri API error:', err);
+            return false;
+         }
       }
       let textBlob = new Blob([fileContents], {type: 'text/plain'});
       let tempLink = document.createElement("a");
@@ -312,44 +452,25 @@
     function undoClick() { editorRef?.undoAction(); }
     function redoClick() { editorRef?.redoAction(); }
 
-   // Used in save-warning-dialog modal
+   // Used in save-warning-dialog modal when closing a tab with unsaved changes
    async function saveAndClose() {
+      const id = tabPendingClose;
       closeModal();
-      if (await exportButtonClick()) {
-         newDocument();
+      if (id !== null && await exportButtonClick()) {
+         removeTab(id);
       }
    }
 
-   // Used in save-warning-dialog modal
+   // Used in save-warning-dialog modal: close the tab without saving
    function closeAndNew() {
+      const id = tabPendingClose;
       closeModal();
-      newDocument();
-   }
-
-   // Reset variables
-   function newDocument() {
-      isProgramRunning = false;
-      isChartVisible = false;
-      pseudocode = '';
-      savedPseudocode = '';
-      lastPseudocode = '';
-      syntaxTree = { body: null };
-      outputText = '';
-      pendingSentencesToExecute = [];
-      lastExecutedSentence = null;
-      clearTimeout(timeoutToParse);
-      errorStore.set([]);
-      interpreterReset();
-       fileNameStore.set(defaultName);
-       pffMeta = null;
-      clearInterval(versionWarningTimer);
-      showNewVersionWarning = false;
-      editorRef?.resetUndo();
-      generateTree();
+      if (id !== null) removeTab(id);
    }
 
    function closeModal() {
       modal = undefined;
+      tabPendingClose = null;
    }
 
    function startResizing(event) {
@@ -393,6 +514,13 @@
    onRedoClick={redoClick}
    bind:isProgramRunning={isProgramRunning}
    bind:isChartVisible={isChartVisible} />
+
+<TabBar
+   tabs={tabList}
+   activeTabId={activeTabId}
+   onSelect={switchTab}
+   onClose={closeTab}
+   onNew={newTab} />
 
 {#if showNewVersionWarning}
 <div id="version-warning">
@@ -462,13 +590,13 @@
    }
 
    #wrapper {
-      height: calc(100% - $topbar-height);
+      height: calc(100% - $topbar-height - $tabbar-height);
       background: $editor-background;
       overflow: hidden;
 
       #resizer {
          width: 8px;
-         height: calc(100vh - $topbar-height);
+         height: calc(100vh - $topbar-height - $tabbar-height);
          cursor: ew-resize;
          border-right: 1px solid $accent-color;
          position: absolute;
@@ -488,7 +616,7 @@
          max-width: 100%;
          flex-direction: column;
          background-color: $editor-background;
-         height: calc(100vh - $topbar-height);
+         height: calc(100vh - $topbar-height - $tabbar-height);
          overflow: hidden;
          position: absolute;
 
@@ -502,7 +630,7 @@
       #output-area {
          width: 100%;
          max-width: 100%;
-         height: calc(100% - $topbar-height);
+         height: calc(100% - $topbar-height - $tabbar-height);
          background-color: $flowchart-background;
           color: var(--color-text-primary, white);
           position: absolute;
@@ -529,7 +657,7 @@
           width: 100%;
           max-width: 100%;
           min-width: 300px;
-          height: calc(100% - $topbar-height);
+          height: calc(100% - $topbar-height - $tabbar-height);
           background-color: $flowchart-background;
           color: var(--color-text-primary, white);
           border-left: 1px solid $editor-background;

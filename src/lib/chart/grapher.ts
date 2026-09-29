@@ -151,6 +151,28 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
 
          treeNodeDimensions.y = treeNodeRect.height * 0.5 + defaultVerticalSpace;
       }
+      else if (node.name === 'OpenFileNode' || node.name === 'CloseFileNode' || node.name === 'AppendNode') {
+         // Files are input/output, so they get the data shape; append changes a variable like a task
+         const isAppend = node.name === 'AppendNode';
+         const symbol = isAppend ? taskSymbol(baseSize, position, chartPalette.task) : dataSymbol(baseSize, position, chartPalette.task);
+         treeNodeRect = addSymbol(symbol);
+
+         let textValue = '';
+         if (node.name === 'OpenFileNode') {
+            textValue = 'open ' + valueBuilder(node.file, false) + ' for ' + node.mode;
+         } else if (node.name === 'CloseFileNode') {
+            textValue = 'close ' + valueBuilder(node.file, false);
+         } else {
+            textValue = 'append ' + valueBuilder(node.value, false) + ' to ' + node.list.value;
+         }
+         const textNode = textLabel(textValue, position, {
+            width: treeNodeRect.width,
+            height: treeNodeRect.height
+         }, chartPalette.text, chartFontSize);
+         symbolsLayer.add(textNode);
+
+         treeNodeDimensions.y = treeNodeRect.height * 0.5 + defaultVerticalSpace;
+      }
       else if (node.name === 'CallStatementNode') {
          treeNodeRect = addSymbol(callSymbol(baseSize, position, chartPalette.task, chartPalette.terminator));
 

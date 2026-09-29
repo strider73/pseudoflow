@@ -318,10 +318,24 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
       callFunction(node.call);
       return { print: '' };
    }
+   else if (node.name === 'AppendNode') {
+      const i = lastVariableIndex(node.list.value);
+      if (i < 0 || !Array.isArray(interpreterVariables[i]['value'])) {
+         throw new Error(`Cannot append to '${node.list.value}' because it is not a list`);
+      }
+      // The raw value is kept, so strings are not quoted twice when the list is printed
+      (interpreterVariables[i]['value'] as unknown[]).push(safeEval(valueBuilder(node.value)));
+      return { print: '' };
+   }
+   else if (node.name === 'OpenFileNode' || node.name === 'CloseFileNode') {
+      throw new Error(FILES_NOT_SUPPORTED);
+   }
 
    // FunctionDefNode is registered up front and does nothing when reached
    return { print: '' };
 }
+
+const FILES_NOT_SUPPORTED = 'Files cannot be opened or read when a program runs in PseudoFlow. The code is checked and charted, but not run.';
 
 function groupBuilder(groupNode: atype.GroupNode, enableVariables: boolean = true): string {
    let groupExpression = '(';
@@ -685,6 +699,12 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
    }
    else if (node.name === 'CallNode') {
       value = literalFromValue(callFunction(node));
+   }
+   else if (node.name === 'FileReadNode' && !enableVariables) {
+      value = 'read next ' + node.kind + ' from ' + valueBuilder(node.file, false);
+   }
+   else if (node.name === 'FileReadNode') {
+      throw new Error(FILES_NOT_SUPPORTED);
    }
    else if (node.name === 'ExpressionNode') {
       value = expressionBuilder(node, enableVariables);

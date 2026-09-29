@@ -26,7 +26,7 @@
      let commandToInsert: any;
      let lastInsertedCommand: any;
 
-    const undoer = new EditorUndo();
+    let undoer = new EditorUndo();
 
     $: {
         if (commandToInsert?.template && lastInsertedCommand !== commandToInsert) {
@@ -337,6 +337,13 @@
     export function undoAction() { applyUndoRedo(true); }
     export function redoAction() { applyUndoRedo(false); }
     export function resetUndo() { undoer.reset(); syncUndoState(); }
+    // Each tab keeps its own history: install `next` (or a fresh one) and hand back the current
+    export function swapUndo(next?: EditorUndo): EditorUndo {
+       const previous = undoer;
+       undoer = next ?? new EditorUndo();
+       syncUndoState();
+       return previous;
+    }
 
     function restoreCursorAtLine(line: number) {
         const lines = editorElement.innerText.split('\n');

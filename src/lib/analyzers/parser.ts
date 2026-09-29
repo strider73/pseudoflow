@@ -40,7 +40,7 @@ export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[
             while (parserIndex < parserTokens.length - 1) {
                 parserIndex++;
                 const token = parserTokens[parserIndex];
-                if (isForStatement()) break;
+                if (isForStatement() || isCommandStatement()) break;
                 if (token.name === 'IdentifierToken') {
                     const next = parserTokens[parserIndex + 1];
                     if (next && (next.name === 'AssignmentToken' || next.name === 'OpenBracketToken' || next.name === 'OpenParenToken')) break;
@@ -65,6 +65,9 @@ function parse() : atype.SentencesNode[] {
    }
    else if (isForStatement()) {
       return [forParser()];
+   }
+   else if (isCommandStatement()) {
+      return [commandParser()];
    }
    else if (token.name === 'IdentifierToken' && parserTokens[parserIndex + 1]?.name === 'OpenParenToken') {
       return [{ name: 'CallStatementNode', call: callParser() }];
@@ -176,6 +179,10 @@ function atomParser(): atype.Node {
       return { name: 'NotNode', value: operand };
    }
 
+   if (token.name === 'ReadToken' && parserTokens[parserIndex + 1]?.value === 'next') {
+      return fileReadParser();
+   }
+
    const validStartTokens = ['NumericToken', 'StringToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken'];
    if (!validStartTokens.includes(token.name)) {
       throw new SyntaxError('Expected a value');
@@ -189,9 +196,33 @@ function atomParser(): atype.Node {
       return randomPhraseParser();
    }
 
+   // 'empty list' is a list with no elements
+   const nextToken = parserTokens[parserIndex + 1];
+   if (
+      token.name === 'IdentifierToken' && token.value === 'empty' &&
+      nextToken?.line === token.line && (nextToken.value === 'list' || nextToken.value === 'array')
+   ) {
+      nextIndex();
+      return { name: 'ArrayNode', elements: [] };
+   }
+
    if (token.name === 'OpenParenToken') {
       nextIndex();
       const inner = expressionParser(0);
+      // A comma makes a tuple, kept as a list: (1, key)
+      if (parserTokens[parserIndex + 1]?.name === 'CommaToken') {
+         const elements = [inner];
+         while (parserTokens[parserIndex + 1]?.name === 'CommaToken') {
+            nextIndex();
+            nextIndex();
+            elements.push(expressionParser(0));
+         }
+         nextIndex();
+         if (parserTokens[parserIndex].name !== 'CloseParenToken') {
+            throw new SyntaxError("Missing ')' after the values in brackets.");
+         }
+         return { name: 'ArrayNode', elements };
+      }
       nextIndex();
       if (parserTokens[parserIndex].name === 'AssignmentToken') {
          throw new SyntaxError("Unexpected '=' in a condition. Use '==' to compare values, not '=' (assignment).");
@@ -538,6 +569,83 @@ function isForStatement(): boolean {
       parserTokens[parserIndex].value === 'for' &&
       parserTokens[parserIndex + 1]?.name === 'IdentifierToken' &&
       parserTokens[parserIndex + 2]?.value === 'from';
+}
+
+// VCAA commands that start with a plain word: open, close, append, report.
+// The word is still a normal variable when it is followed by '←', '=', '[', '(' or '.'
+const COMMAND_WORDS = ['open', 'close', 'append', 'report'];
+
+function isCommandStatement(): boolean {
+   const token = parserTokens[parserIndex];
+   const next = parserTokens[parserIndex + 1];
+   if (token?.name !== 'IdentifierToken' || !COMMAND_WORDS.includes(token.value!)) return false;
+   if (!next || next.line !== token.line) return false;
+   if (['AssignmentToken', 'OpenBracketToken', 'DotToken'].includes(next.name)) return false;
+   // append (1, key) to list  starts with a bracket, so it needs the 'to' to tell it from a call
+   if (token.value === 'append') return hasWordOnLine('to');
+   return next.name !== 'OpenParenToken';
+}
+
+function hasWordOnLine(word: string): boolean {
+   const line = parserTokens[parserIndex].line;
+   for (let i = parserIndex + 1; i < parserTokens.length && parserTokens[i].line === line; i++) {
+      if (parserTokens[i].value === word) return true;
+   }
+   return false;
+}
+
+// open <file> [for reading|writing]  |  close <file>  |  append <value> to <list>  |  report <value>
+function commandParser(): atype.SentencesNode {
+   const command = parserTokens[parserIndex].value;
+   nextIndex();
+   const value = expressionParser();
+
+   if (command === 'open') {
+      let mode = 'reading';
+      if (parserTokens[parserIndex + 1]?.value === 'for') {
+         nextIndex();
+         nextIndex();
+         mode = parserTokens[parserIndex].value!;
+         if (!['reading', 'writing'].includes(mode)) {
+            throw new SyntaxError(`Expected 'reading' or 'writing' after 'open ... for' but found '${mode}'.`);
+         }
+      }
+      return { name: 'OpenFileNode', file: value, mode };
+   }
+   if (command === 'close') {
+      return { name: 'CloseFileNode', file: value };
+   }
+   if (command === 'append') {
+      nextIndex();
+      if (parserTokens[parserIndex].value !== 'to') {
+         throw new SyntaxError(`Expected 'to' in 'append ... to list' but found '${parserTokens[parserIndex].value}'.`);
+      }
+      nextIndex();
+      const list = parserTokens[parserIndex];
+      if (list.name !== 'IdentifierToken') {
+         throw new SyntaxError(`Expected a list name after 'append ... to' but found '${list.value}'.`);
+      }
+      return { name: 'AppendNode', value, list: { name: 'IdentifierNode', value: list.value } };
+   }
+   return { name: 'PrintNode', value };
+}
+
+const FILE_READ_KINDS = ['integer', 'number', 'line', 'word'];
+
+// read next integer|number|line|word from <file>
+function fileReadParser(): atype.FileReadNode {
+   nextIndex(); // 'next'
+   nextIndex();
+   const kind = parserTokens[parserIndex].value!;
+   if (!FILE_READ_KINDS.includes(kind)) {
+      throw new SyntaxError(`Expected ${FILE_READ_KINDS.join(', ')} after 'read next' but found '${kind}'.`);
+   }
+   nextIndex();
+   if (parserTokens[parserIndex].value !== 'from') {
+      throw new SyntaxError(`Expected 'from' in 'read next ${kind} from ...' but found '${parserTokens[parserIndex].value}'.`);
+   }
+   nextIndex();
+   return { name: 'FileReadNode', file: expressionParser(), kind };
 }
 
 // for i from <start> to <end> [step <n>] ... endfor  (VCAA style, 'to' is inclusive)

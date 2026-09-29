@@ -119,6 +119,10 @@ export type FunctionDefNode =          { name: 'FunctionDefNode', identifier: st
 export type ReturnNode =               { name: 'ReturnNode', value?: Node };
 export type CallStatementNode =        { name: 'CallStatementNode', call: CallNode };
 export type CallNode =                 { name: 'CallNode', callee: string, args: Node[] };
+export type OpenFileNode =             { name: 'OpenFileNode', file: Node, mode: string };
+export type CloseFileNode =            { name: 'CloseFileNode', file: Node };
+export type AppendNode =               { name: 'AppendNode', value: Node, list: IdentifierNode };
+export type FileReadNode =             { name: 'FileReadNode', file: Node, kind: string };
 export type NotNode =                  { name: 'NotNode', value: Node };
 export type GroupNode =                { name: 'GroupNode', body: Node };
 export type IdentifierNode =           { name: 'IdentifierNode', value: string | undefined };
@@ -140,7 +144,10 @@ export type SentencesNode =
    DowhileNode                | 
    FunctionDefNode            | 
    ReturnNode                 | 
-   CallStatementNode;
+   CallStatementNode          |
+   OpenFileNode               |
+   CloseFileNode              |
+   AppendNode;
 
 // *******************************************
 // Expressions
@@ -178,4 +185,5 @@ export type Node =
    ArrayIndexNode             |
    PropertyAccessNode         |
    CallNode                   |
+   FileReadNode               |
    NotNode;

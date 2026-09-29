@@ -35,6 +35,8 @@
    "APP_CMD_FOR": "Repite",
    "APP_CMD_WHILE": "Mientras",
    "APP_CMD_DOWHILE": "Hacer-Mientras",
+   "APP_TAB_CLOSE": "Cerrar pestaña",
+   "APP_TAB_NEW": "Nueva pestaña",
    "APP_CMD_DEFINE": "Definir",
    "APP_PROGRAM_STARTED": "Comenzó el programa",
    "APP_PROGRAM_END": "Finalizó el programa",

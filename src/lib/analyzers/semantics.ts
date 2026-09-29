@@ -116,6 +116,21 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'CallStatementNode':
             checkTypeInValue(node.call)
             break
+
+         case 'OpenFileNode':
+         case 'CloseFileNode':
+            checkTypeInValue(node.file)
+            break
+
+         case 'AppendNode': {
+            checkDeclared(node.list.value!)
+            const sym = findSymbol(node.list.value!)
+            if (sym && sym.type && sym.type !== 'array') {
+               errors.push({ type: 'semantic', message: `Variable '${sym.name}' is not a list` })
+            }
+            checkTypeInValue(node.value)
+            break
+         }
       }
    }
 
@@ -155,6 +170,8 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             return inferType(node.body)
          case 'NotNode':
             return 'boolean'
+         case 'FileReadNode':
+            return node.kind === 'integer' || node.kind === 'number' ? 'number' : 'string'
          case 'CallNode':
             return node.callee === 'randominteger' && !functions.has(node.callee) ? 'number' : undefined
          default:
@@ -217,6 +234,9 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             break
          case 'NotNode':
             checkTypeInValue(node.value)
+            break
+         case 'FileReadNode':
+            checkTypeInValue(node.file)
             break
       }
    }

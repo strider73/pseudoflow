@@ -35,6 +35,8 @@
    "APP_CMD_FOR": "Repeat",
    "APP_CMD_WHILE": "While",
    "APP_CMD_DOWHILE": "Do-While",
+   "APP_TAB_CLOSE": "Close tab",
+   "APP_TAB_NEW": "New tab",
    "APP_CMD_DEFINE": "Define",
    "APP_PROGRAM_STARTED": "Program started",
    "APP_PROGRAM_END": "Program end",
