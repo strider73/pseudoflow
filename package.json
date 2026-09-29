@@ -9,7 +9,8 @@
       "start": "vite",
       "build": "vite build",
       "preview": "vite preview",
-      "tauri": "tauri"
+      "tauri": "tauri",
+      "test": "tsx --import ./test/setup.mjs test/analyzer-regression.ts && tsx --import ./test/setup.mjs test/convention-harness.ts"
    },
    "devDependencies": {
       "@sveltejs/vite-plugin-svelte": "^2.5.0",
@@ -17,6 +18,7 @@
       "@tauri-apps/cli": "^1.6.3",
       "sass": "^1.101.0",
       "svelte": "^3.59.2",
+      "tsx": "^4.23.15",
       "typescript": "^5.3.0",
       "vite": "^4.5.0"
    },
