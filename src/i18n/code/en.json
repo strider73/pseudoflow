@@ -23,6 +23,7 @@
    "CODE_RETURN": "return",
     "CODE_LENGTH": "length",
     "CODE_AND": "and",
+   "CODE_NOT": "not",
    "CODE_OR": "or",
    "CHART_YES": "yes",
    "CHART_NO": "no"

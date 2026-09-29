@@ -23,6 +23,7 @@
    "CODE_RETURN": "retornar",
     "CODE_LENGTH": "longitud",
     "CODE_AND": "y",
+   "CODE_NOT": "no",
    "CODE_OR": "o",
    "CHART_YES": "si",
    "CHART_NO": "no"

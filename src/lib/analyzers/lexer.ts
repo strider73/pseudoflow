@@ -10,7 +10,7 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'DefineToken',              rule: new RegExp('^' + word.CODE_DEFINE + '$', 'g') },
       { name: 'CloseDefineToken',         rule: new RegExp('^' + word.CODE_ENDDEFINE + '$', 'g') },
       { name: 'ReturnToken',              rule: new RegExp('^' + word.CODE_RETURN + '$', 'g') },
-      { name: 'AssignmentToken',          rule: /^\=$/g },
+      { name: 'AssignmentToken',          rule: /^(\=|←)$/g },
       { name: 'OpenParenToken',           rule: /^\($/g },
       { name: 'CloseParenToken',          rule: /^\)$/g },
       { name: 'OpenIfToken',              rule: new RegExp('^' + word.CODE_IF + '$', 'g') },
@@ -32,6 +32,7 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'DivisionToken',            rule: /^\/$/g },
       { name: 'ModuleToken',              rule: /^\%$/g },
       { name: 'RelationalToken',          rule: /[\>\<]=?|[\=\!]\=/g },
+      { name: 'NotToken',                 rule: new RegExp('^' + word.CODE_NOT + '$', 'g') },
       { name: 'BooleanToken',             rule: new RegExp('^' + word.CODE_AND + '$|^' + word.CODE_OR + '$', 'g') },
       { name: 'StringToken',              rule: /(["'])(?:(?=(\\?))\2.)*?\1/g },
       { name: 'NumericToken',             rule: /^\-?(\d?)+\.?\d+$/g },
@@ -44,11 +45,39 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
    ];
 }
 
+// VCAA-style symbols and upper-case operators are rewritten to PseudoFlow's own
+// spelling, so the rest of the pipeline only ever sees one form
+const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥': '>=', '×': '*', '÷': '/' };
+
+function buildWordAliases(word: typeof englishWords): Record<string, string> {
+   return {
+      ...SYMBOL_ALIASES,
+      'mod': '%',
+      'MOD': '%',
+      [word.CODE_AND.toUpperCase()]: word.CODE_AND,
+      [word.CODE_OR.toUpperCase()]: word.CODE_OR,
+      [word.CODE_NOT.toUpperCase()]: word.CODE_NOT
+   };
+}
+
 let tokenStringMap: Array<atype.Token> = buildTokenMap(englishWords);
+let wordAliases: Record<string, string> = buildWordAliases(englishWords);
 
 codeWordStore.subscribe(word => {
    tokenStringMap = buildTokenMap(word);
+   wordAliases = buildWordAliases(word);
 });
+
+// Width of the leading whitespace of the line starting at `start` (tabs count as 4)
+function indentAt(code: string, start: number): number {
+   let column = 0;
+   for (let i = start; i < code.length; i++) {
+      if (code[i] === ' ') column++;
+      else if (code[i] === '\t') column += 4 - (column % 4);
+      else break;
+   }
+   return column;
+}
 
 export const lexer = (code: string) : Array<atype.Token> => {
    // remove comments
@@ -59,18 +88,23 @@ export const lexer = (code: string) : Array<atype.Token> => {
    let tokens : Array<atype.Token> = [];
    let match;
    let line = 1;
+   let lineStart = 0;
    let lastIndex = 0;
 
    while ((match = regex.exec(code)) !== null) {
       for (let i = lastIndex; i < match.index; i++) {
-         if (code[i] === '\n') line++;
+         if (code[i] === '\n') {
+            line++;
+            lineStart = i + 1;
+         }
       }
       lastIndex = regex.lastIndex;
 
-      const word = match[0];
+      const word = Object.prototype.hasOwnProperty.call(wordAliases, match[0]) ? wordAliases[match[0]] : match[0];
+      const indent = indentAt(code, lineStart);
       for (const { name, rule } of tokenStringMap) {
          if (word.match(rule!)) {
-            tokens.push({ name, value: word, line } as atype.Token);
+            tokens.push({ name, value: word, line, indent } as atype.Token);
             break;
          }
       }

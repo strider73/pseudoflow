@@ -6,6 +6,7 @@ type ValueType = 'number' | 'string' | 'boolean' | 'array'
 const ARITHMETIC_OPS = ['+', '-', '*', '/', '%']
 const COMPARISON_OPS = ['==', '!=', '<', '>', '<=', '>=']
 const BOOLEAN_OPS = ['&&', '||']
+export const BUILTIN_FUNCTIONS: Record<string, number> = { randominteger: 2 }
 
 export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): AnalysisError[] {
    const errors: AnalysisError[] = []
@@ -31,12 +32,18 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             if (node.identifier.name === 'IdentifierNode' && node.identifier.value) {
                const sym = findSymbol(node.identifier.value)
                if (sym) checkTypeConsistency(node.identifier.value, valueType, sym.type)
-               if (!sym) {
+               if (!sym && node.implicitDeclare) {
+                  symbols.push({ name: node.identifier.value, type: valueType })
+               }
+               else if (!sym) {
                   errors.push({
                      type: 'semantic',
                      message: `Variable '${node.identifier.value}' is not declared`
                   })
                }
+            }
+            if (node.identifier.name === 'ArrayIndexNode' && node.implicitDeclare && !findSymbol(node.identifier.array.value!)) {
+               symbols.push({ name: node.identifier.array.value!, type: 'array' })
             }
             if (node.identifier.name === 'ArrayIndexNode') {
                checkDeclared(node.identifier.array.value!)
@@ -144,6 +151,10 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          }
          case 'GroupNode':
             return inferType(node.body)
+         case 'NotNode':
+            return 'boolean'
+         case 'CallNode':
+            return node.callee === 'randominteger' && !functions.has(node.callee) ? 'number' : undefined
          default:
             return undefined
       }
@@ -202,16 +213,20 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'CallNode':
             checkCall(node)
             break
+         case 'NotNode':
+            checkTypeInValue(node.value)
+            break
       }
    }
 
    function checkCall(node: atype.CallNode) {
       const fn = functions.get(node.callee)
-      if (!fn) {
+      const arity = fn ? fn.params.length : BUILTIN_FUNCTIONS[node.callee]
+      if (arity === undefined) {
          errors.push({ type: 'semantic', message: `Function '${node.callee}' is not defined` })
       }
-      else if (fn.params.length !== node.args.length) {
-         errors.push({ type: 'semantic', message: `Function '${node.callee}' expects ${fn.params.length} argument(s) but got ${node.args.length}` })
+      else if (arity !== node.args.length) {
+         errors.push({ type: 'semantic', message: `Function '${node.callee}' expects ${arity} argument(s) but got ${node.args.length}` })
       }
       node.args.forEach(arg => {
          checkArrayInScalarContext(arg)

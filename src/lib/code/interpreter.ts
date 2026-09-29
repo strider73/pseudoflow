@@ -1,4 +1,10 @@
 import type * as atype from "../analyzers/atypes";
+import { codeWordStore } from "../stores";
+
+let reservedWords;
+codeWordStore.subscribe(value => {
+   reservedWords = value;
+});
 
 let interpreterPrints: string;
 let interpreterVariables: Array<{identifier: string, value: unknown}>;
@@ -80,6 +86,9 @@ function lastVariableIndex(identifier: string | undefined): number {
 // exit, so they shadow globals while the function runs.
 function callFunction(call: atype.CallNode): any {
    const fn = interpreterFunctions.get(call.callee);
+   if (!fn && call.callee === 'randominteger') {
+      return randomInteger(call);
+   }
    if (!fn) {
       throw new Error(`Function '${call.callee}' is not defined`);
    }
@@ -116,6 +125,22 @@ function callFunction(call: atype.CallNode): any {
    }
 }
 
+function randomInteger(call: atype.CallNode): number {
+   if (call.args.length !== 2) {
+      throw new Error(`Function 'randominteger' expects 2 argument(s) but got ${call.args.length}`);
+   }
+   const [a, b] = call.args.map(arg => Number(safeEval(valueBuilder(arg))));
+   if (isNaN(a) || isNaN(b)) {
+      throw new Error(`randominteger needs two numbers`);
+   }
+   const low = Math.ceil(Math.min(a, b));
+   const high = Math.floor(Math.max(a, b));
+   if (low > high) {
+      throw new Error(`randominteger has no whole number between ${a} and ${b}`);
+   }
+   return low + Math.floor(Math.random() * (high - low + 1));
+}
+
 function literalFromValue(value: any): string {
    if (Array.isArray(value)) return JSON.stringify(value);
    if (typeof value === 'string') return '"' + value + '"';
@@ -141,6 +166,9 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
          const index = safeEval(valueBuilder(node.identifier.index));
          const storedValue = toStoredValue(safeEval(valueBuilder(node.value)));
 
+         if (lastVariableIndex(arrayName) < 0 && node.implicitDeclare) {
+            interpreterVariables.push({ identifier: arrayName, value: [] });
+         }
          const i = lastVariableIndex(arrayName);
          if (i >= 0) {
             let arr = interpreterVariables[i]['value'];
@@ -155,6 +183,9 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
          const i = lastVariableIndex(node.identifier.value);
          if (i >= 0) {
             interpreterVariables[i]['value'] = storedValue;
+         }
+         else if (node.implicitDeclare) {
+            interpreterVariables.push({ identifier: node.identifier.value, value: storedValue });
          }
       }
 
@@ -402,6 +433,10 @@ function safeEval(expression: any): any {
       return left;
    }
    function parseUnary(): any {
+      if (peek()?.type === 'operator' && peek()?.value === '!') {
+         consume();
+         return !parseUnary();
+      }
       if (peek()?.type === 'operator' && peek()?.value === '-') {
          consume();
          return -parseUnary();
@@ -559,6 +594,9 @@ function tokenize(expr: string): { type: string; value: string }[] {
       if (expr[i] === '!' && expr[i + 1] === '=') {
          tokens.push({ type: 'operator', value: '!=' }); i += 2; continue;
       }
+      if (expr[i] === '!') {
+         tokens.push({ type: 'operator', value: '!' }); i++; continue;
+      }
       if (expr[i] === '>' && expr[i + 1] === '=') {
          tokens.push({ type: 'operator', value: '>=' }); i += 2; continue;
       }
@@ -617,6 +655,12 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
    }
    else if (node.name === 'ArrayNode') {
       value = '[' + node.elements.map(el => valueBuilder(el, enableVariables)).join(',') + ']';
+   }
+   else if (node.name === 'NotNode' && !enableVariables) {
+      value = reservedWords.CODE_NOT + ' ' + valueBuilder(node.value, false);
+   }
+   else if (node.name === 'NotNode') {
+      value = '!(' + valueBuilder(node.value) + ')';
    }
    else if (node.name === 'CallNode' && !enableVariables) {
       value = node.callee + '(' + node.args.map(arg => valueBuilder(arg, false)).join(', ') + ')';

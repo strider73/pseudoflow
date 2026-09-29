@@ -30,6 +30,7 @@ export type MultiplicationToken =      { name: 'MultiplicationToken', rule?: Reg
 export type DivisionToken =            { name: 'DivisionToken', rule?: RegExp, value?: string };
 export type ModuleToken =              { name: 'ModuleToken', rule?: RegExp, value?: string };
 export type RelationalToken =          { name: 'RelationalToken', rule?: RegExp, value?: string };
+export type NotToken =                 { name: 'NotToken', rule?: RegExp, value?: string };
 export type BooleanToken =             { name: 'BooleanToken', rule?: RegExp, value?: string };
 export type StringToken =              { name: 'StringToken', rule?: RegExp, value?: string };
 export type NumericToken =             { name: 'NumericToken', rule?: RegExp, value?: string };
@@ -58,7 +59,7 @@ export type ArrayToken =
     CommaToken                 |
     DotToken;
 
-export type Token = { line?: number } & (
+export type Token = { line?: number, indent?: number } & (
    DeclarationToken           | 
    PrintToken                 | 
    ReadToken                  | 
@@ -84,6 +85,7 @@ export type Token = { line?: number } & (
    ArithmeticToken            | 
    RelationalToken            | 
    BooleanToken               | 
+   NotToken                   | 
    StringToken                | 
    NumericToken               | 
    IdentifierToken            | 
@@ -98,7 +100,7 @@ export type Token = { line?: number } & (
 // *******************************************
 
 export type DeclarationNode =          { name: 'DeclarationNode', identifier: string, value: Node, autoInitialized?: boolean };
-export type AssignmentNode =           { name: 'AssignmentNode', identifier: IdentifierNode | ArrayIndexNode, value: Node };
+export type AssignmentNode =           { name: 'AssignmentNode', identifier: IdentifierNode | ArrayIndexNode, value: Node, implicitDeclare?: boolean };
 export type PrintNode =                { name: 'PrintNode', value: Node };
 export type ReadNode =                 { name: 'ReadNode', identifier: IdentifierToken };
 export type IfNode =                   { name: 'IfNode', argument: Node, body: SentencesNode[], alternative: SentencesNode[] };
@@ -111,6 +113,7 @@ export type FunctionDefNode =          { name: 'FunctionDefNode', identifier: st
 export type ReturnNode =               { name: 'ReturnNode', value?: Node };
 export type CallStatementNode =        { name: 'CallStatementNode', call: CallNode };
 export type CallNode =                 { name: 'CallNode', callee: string, args: Node[] };
+export type NotNode =                  { name: 'NotNode', value: Node };
 export type GroupNode =                { name: 'GroupNode', body: Node };
 export type IdentifierNode =           { name: 'IdentifierNode', value: string | undefined };
 export type StringNode =               { name: 'StringNode', value: string | undefined };
@@ -168,4 +171,5 @@ export type Node =
    ArrayNode                  |
    ArrayIndexNode             |
    PropertyAccessNode         |
-   CallNode;
+   CallNode                   |
+   NotNode;

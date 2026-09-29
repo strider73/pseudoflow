@@ -16,7 +16,7 @@
    color: $linenumbers-foreground;
    user-select: none;
 }
-.hl-case, .hl-endcase, .hl-repeatdeclare, .hl-repeatto, .hl-repeatstep, .hl-and, .hl-or {color: $hl-red}
+.hl-case, .hl-endcase, .hl-repeatdeclare, .hl-repeatto, .hl-repeatstep, .hl-and, .hl-or, .hl-not {color: $hl-red}
 .hl-print {color: $hl-info-blue}
 .hl-read {color: $hl-info-green}
 .hl-var {color: $hl-info-green}

@@ -163,9 +163,24 @@ function atomParser(): atype.Node {
       };
    }
 
+   if (token.name === 'NotToken') {
+      nextIndex();
+      // Binds tighter than and/or but covers comparisons: not a > b  ->  not (a > b)
+      const operand = expressionParser(1);
+      return { name: 'NotNode', value: operand };
+   }
+
    const validStartTokens = ['NumericToken', 'StringToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken'];
    if (!validStartTokens.includes(token.name)) {
       throw new SyntaxError('Expected a value');
+   }
+
+   if (
+      token.name === 'IdentifierToken' && token.value === 'random' &&
+      parserTokens[parserIndex + 1]?.value === 'integer' &&
+      parserTokens[parserIndex + 2]?.value === 'from'
+   ) {
+      return randomPhraseParser();
    }
 
    if (token.name === 'OpenParenToken') {
@@ -271,7 +286,7 @@ function assignmentParser(): atype.AssignmentNode {
    const identifier = parserTokens[parserIndex];
    nextIndex();
 
-   let target: atype.IdentifierNode | atype.ArrayIndexNode = { 
+   let target: atype.IdentifierNode | atype.ArrayIndexNode = {
       name: 'IdentifierNode', 
       value: identifier.value 
    };
@@ -288,6 +303,8 @@ function assignmentParser(): atype.AssignmentNode {
        }
        throw new SyntaxError(`Expected '=' after identifier but found '${parserTokens[parserIndex].value}'. Use 'identifier = value' to assign.`);
     }
+   // VCAA-style '←' creates the variable if it does not exist yet
+   const implicitDeclare = parserTokens[parserIndex].value === '←';
    nextIndex();
 
    let value = expressionParser();
@@ -295,7 +312,8 @@ function assignmentParser(): atype.AssignmentNode {
    return { 
       name: 'AssignmentNode',
       identifier: target,
-      value: value
+      value: value,
+      implicitDeclare: implicitDeclare
    };
 }
 
@@ -527,8 +545,17 @@ function dowhileParser() : atype.DowhileNode {
    }
 }
 
+function hasEnddefineAhead(): boolean {
+   for (let i = parserIndex + 1; i < parserTokens.length; i++) {
+      if (parserTokens[i].name === 'CloseDefineToken') return true;
+      if (parserTokens[i].name === 'DefineToken') return false;
+   }
+   return false;
+}
+
 function defineParser() : atype.FunctionDefNode {
-   const line = parserTokens[parserIndex].line;
+   const defineToken = parserTokens[parserIndex];
+   const line = defineToken.line;
    nextIndex();
    const identifier = parserTokens[parserIndex];
    if (identifier.name !== 'IdentifierToken') {
@@ -564,12 +591,16 @@ function defineParser() : atype.FunctionDefNode {
       nextIndex();
    }
 
+   // Without an enddefine the body is every following line indented deeper than 'define' (VCAA style)
+   const endsWithKeyword = hasEnddefineAhead();
+   const defineIndent = defineToken.indent ?? 0;
+
    insideDefine = true;
    let body = new Array<atype.SentencesNode>;
    do {
-      if (!parserTokens[parserIndex + 1]) {
-         throw new SyntaxError(`Missing '${reservedWords.CODE_ENDDEFINE}' to close function '${identifier.value}'.`);
-      }
+      const next = parserTokens[parserIndex + 1];
+      if (!next) break;
+      if (!endsWithKeyword && next.line !== line && (next.indent ?? 0) <= defineIndent) break;
       nextIndex();
       if (parserTokens[parserIndex].name === 'CloseDefineToken') break;
       body.push(...parse());
@@ -588,7 +619,7 @@ function defineParser() : atype.FunctionDefNode {
 function returnParser() : atype.ReturnNode {
    const token = parserTokens[parserIndex];
    const next = parserTokens[parserIndex + 1];
-   const valueStartTokens = ['NumericToken', 'StringToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken', 'SubstractionToken'];
+   const valueStartTokens = ['NumericToken', 'StringToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken', 'SubstractionToken', 'NotToken'];
 
    // A value is only taken from the same line, so a bare return followed by another statement works
    if (next && next.line === token.line && valueStartTokens.includes(next.name)) {
@@ -597,6 +628,36 @@ function returnParser() : atype.ReturnNode {
    }
 
    return { name: 'ReturnNode' };
+}
+
+// random integer from <low> to <high> [inclusive | exclusive]  ->  randominteger(low, high)
+function randomPhraseParser(): atype.CallNode {
+   nextIndex(); // 'integer'
+   nextIndex(); // 'from'
+   nextIndex();
+   const low = expressionParser();
+   nextIndex();
+   if (parserTokens[parserIndex].value !== 'to') {
+      throw new SyntaxError(`Expected 'to' in 'random integer from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
+   }
+   nextIndex();
+   let high = expressionParser();
+
+   const bound = parserTokens[parserIndex + 1]?.value;
+   if (bound === 'inclusive') {
+      nextIndex();
+   }
+   else if (bound === 'exclusive') {
+      nextIndex();
+      high = {
+         name: 'ExpressionNode',
+         left: { name: 'GroupNode', body: high },
+         right: { name: 'NumericNode', value: '1' },
+         operator: { name: 'SubstractionToken', value: '-' }
+      };
+   }
+
+   return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
 }
 
 function callParser(): atype.CallNode {
