@@ -3,7 +3,7 @@ import type { AnalysisError } from './atypes'
 
 type ValueType = 'number' | 'string' | 'boolean' | 'array'
 
-const ARITHMETIC_OPS = ['+', '-', '*', '/', '%']
+const ARITHMETIC_OPS = ['+', '-', '*', '/', '%', '^']
 const COMPARISON_OPS = ['==', '!=', '<', '>', '<=', '>=']
 const BOOLEAN_OPS = ['&&', '||']
 export const BUILTIN_FUNCTIONS: Record<string, number> = { randominteger: 2 }
@@ -81,7 +81,9 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             break
 
          case 'RepeatNode': {
-            checkRedeclared(node.declaration.identifier)
+            // A VCAA 'for' counter may reuse a variable from an earlier loop
+            const existingCounter = node.countUp ? findSymbol(node.declaration.identifier) : undefined
+            if (!existingCounter) checkRedeclared(node.declaration.identifier)
             const declType = inferType(node.declaration.value)
             if (declType && declType !== 'number') {
                errors.push({

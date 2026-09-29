@@ -82,7 +82,11 @@ export const outdentLines = (element: HTMLElement): string | null => {
    return changed ? range.lines.join('\n') : null;
 }
 
-export const insertTemplate = (template: string): void => {
+export const insertTemplate = (template: string, inline: boolean = false): void => {
+   if (inline) {
+      document.execCommand("InsertText", false, template);
+      return;
+   }
    const templateArray = template.split('\n');
    templateArray.forEach(element => {
       document.execCommand("InsertHTML", false, element);

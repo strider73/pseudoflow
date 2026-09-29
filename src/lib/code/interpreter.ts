@@ -231,6 +231,16 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
       const declarationValue = safeEval(valueBuilder(node.declaration.value));
       const toValue = safeEval(valueBuilder(node.to));
       let stepsValue = safeEval(valueBuilder(node.steps));
+
+      // 'for i from a to b' runs zero times when b is already past a
+      if (node.countUp) {
+         if (stepsValue === 0) {
+            throw new Error(`The step of the for loop over '${node.declaration.identifier}' cannot be 0`);
+         }
+         if (stepsValue > 0 ? declarationValue > toValue : declarationValue < toValue) {
+            return { print: '' };
+         }
+      }
       stepsValue = Math.abs(stepsValue);
 
       const ascending = declarationValue <= toValue;
@@ -249,7 +259,8 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
             },
             name: node.name,
             steps: node.steps,
-            to: node.to
+            to: node.to,
+            countUp: node.countUp
          } as atype.RepeatNode, 0);
       }
        
@@ -325,15 +336,21 @@ function groupBuilder(groupNode: atype.GroupNode, enableVariables: boolean = tru
    return groupExpression += ')';
 }
 
-function expressionBuilder(node: atype.ExpressionNode, enableVariables: boolean = true): string {
-   let expression: string;
+// Nested expressions are bracketed when evaluating, so the tree's grouping is kept
+// (2 * -3 and 2 ^ -1 would otherwise be flattened into 2*0-3 and 2^0-1)
+function operandBuilder(operand: atype.Node, enableVariables: boolean): string {
+   if (operand.name === 'GroupNode') {
+      return groupBuilder(operand, enableVariables);
+   }
+   if (operand.name === 'ExpressionNode') {
+      const inner = expressionBuilder(operand, enableVariables);
+      return enableVariables ? '(' + inner + ')' : inner;
+   }
+   return valueBuilder(operand, enableVariables) as string;
+}
 
-   if (node.left.name === 'GroupNode') {
-      expression = groupBuilder(node.left, enableVariables);
-   }
-   else {
-      expression = valueBuilder(node.left, enableVariables);
-   }
+function expressionBuilder(node: atype.ExpressionNode, enableVariables: boolean = true): string {
+   let expression = operandBuilder(node.left, enableVariables);
 
    if (node.operator.name === 'BooleanToken') {
       const isAnd = node.operator.value === 'and' || node.operator.value === 'y';
@@ -342,15 +359,7 @@ function expressionBuilder(node: atype.ExpressionNode, enableVariables: boolean 
       expression += node.operator.value;
    }
 
-   if (node.right.name === 'GroupNode') {
-      expression += groupBuilder(node.right, enableVariables);
-   }
-   else if (node.right['name'] === 'ExpressionNode') {
-      expression += expressionBuilder(node.right, enableVariables);
-   }
-   else {
-      expression += valueBuilder(node.right, enableVariables);
-   }
+   expression += operandBuilder(node.right, enableVariables);
 
    return expression;
 }
@@ -445,7 +454,16 @@ function safeEval(expression: any): any {
          consume();
          return parseUnary();
       }
-      return parsePostfix();
+      return parsePower();
+   }
+   function parsePower(): any {
+      const base = parsePostfix();
+      if (peek()?.type === 'operator' && peek()?.value === '^') {
+         consume();
+         const exponent = parseUnary(); // right associative, allows 2^-1
+         return Math.pow(base, exponent);
+      }
+      return base;
    }
    function parsePostfix(): any {
       let value = parsePrimary();
@@ -603,7 +621,7 @@ function tokenize(expr: string): { type: string; value: string }[] {
       if (expr[i] === '<' && expr[i + 1] === '=') {
          tokens.push({ type: 'operator', value: '<=' }); i += 2; continue;
       }
-      if ('+-*/%><='.includes(expr[i])) {
+      if ('+-*/%><=^'.includes(expr[i])) {
          tokens.push({ type: 'operator', value: expr[i] }); i++; continue;
       }
       let m2 = expr.slice(i).match(/^[a-zA-Z_$][a-zA-Z0-9_$]*/);

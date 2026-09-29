@@ -10,10 +10,11 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'DefineToken',              rule: new RegExp('^' + word.CODE_DEFINE + '$', 'g') },
       { name: 'CloseDefineToken',         rule: new RegExp('^' + word.CODE_ENDDEFINE + '$', 'g') },
       { name: 'ReturnToken',              rule: new RegExp('^' + word.CODE_RETURN + '$', 'g') },
-      { name: 'AssignmentToken',          rule: /^(\=|←)$/g },
+      { name: 'AssignmentToken',          rule: /^(\=|\u2190)$/g },
       { name: 'OpenParenToken',           rule: /^\($/g },
       { name: 'CloseParenToken',          rule: /^\)$/g },
       { name: 'OpenIfToken',              rule: new RegExp('^' + word.CODE_IF + '$', 'g') },
+      { name: 'ThenToken',                rule: new RegExp('^' + word.CODE_THEN + '$', 'g') },
       { name: 'OpenIfElseToken',          rule: new RegExp('^' + word.CODE_ELSE + '$', 'g') },
       { name: 'CloseIfToken',             rule: new RegExp('^' + word.CODE_ENDIF + '$', 'g') },
       { name: 'OpenSwitchToken',          rule: new RegExp('^' + word.CODE_SWITCH + '$', 'g') },
@@ -21,6 +22,7 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'OpenCaseToken',            rule: new RegExp('^' + word.CODE_CASE + '$', 'g') },
       { name: 'CloseCaseToken',           rule: new RegExp('^' + word.CODE_ENDCASE + '$', 'g') },
       { name: 'OpenRepeatToken',          rule: new RegExp('^' + word.CODE_REPEAT + '$', 'g') },
+      { name: 'CloseForToken',            rule: new RegExp('^' + word.CODE_ENDFOR + '$', 'g') },
       { name: 'CloseRepeatToken',         rule: new RegExp('^' + word.CODE_ENDREPEAT + '$', 'g') },
       { name: 'OpenWhileToken',           rule: new RegExp('^' + word.CODE_WHILE + '$', 'g') },
       { name: 'CloseWhileToken',          rule: new RegExp('^' + word.CODE_ENDWHILE + '$', 'g') },
@@ -31,6 +33,7 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'MultiplicationToken',      rule: /^\*$/g },
       { name: 'DivisionToken',            rule: /^\/$/g },
       { name: 'ModuleToken',              rule: /^\%$/g },
+      { name: 'PowerToken',               rule: /^\^$/g },
       { name: 'RelationalToken',          rule: /[\>\<]=?|[\=\!]\=/g },
       { name: 'NotToken',                 rule: new RegExp('^' + word.CODE_NOT + '$', 'g') },
       { name: 'BooleanToken',             rule: new RegExp('^' + word.CODE_AND + '$|^' + word.CODE_OR + '$', 'g') },
@@ -47,7 +50,10 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
 
 // VCAA-style symbols and upper-case operators are rewritten to PseudoFlow's own
 // spelling, so the rest of the pipeline only ever sees one form
-const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥': '>=', '×': '*', '÷': '/' };
+// Braces are accepted as brackets so LaTeX-style powers like 2^{n+1} work
+const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥': '>=', '×': '*', '÷': '/', '{': '(', '}': ')' };
+const SUPERSCRIPT_POWERS: Record<string, string> = { '²': '2', '³': '3' };
+const END_PREFIXES = ['end', 'fin'];
 
 function buildWordAliases(word: typeof englishWords): Record<string, string> {
    return {
@@ -83,7 +89,7 @@ export const lexer = (code: string) : Array<atype.Token> => {
    // remove comments
    code = code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g,'');
    // separate words to lexer
-    const regex = /(["'])(?:(?=(\\?))\2.)*?\1|(?:[=&|^+<>/*%!~-]{1,2})|(\-?\d?)+\.?\d+|(?:[\\(){}[\];\:\?]|(?:\w+))|[^\s]/g;
+    const regex = /(["'])(?:(?=(\\?))\2.)*?\1|(?:[=&|+<>/*%!~-]{1,2})|(\-?\d?)+\.?\d+|(?:[\\(){}[\];\:\?]|(?:\w+))|[^\s]/g;
 
    let tokens : Array<atype.Token> = [];
    let match;
@@ -100,8 +106,14 @@ export const lexer = (code: string) : Array<atype.Token> => {
       }
       lastIndex = regex.lastIndex;
 
-      const word = Object.prototype.hasOwnProperty.call(wordAliases, match[0]) ? wordAliases[match[0]] : match[0];
       const indent = indentAt(code, lineStart);
+      if (Object.prototype.hasOwnProperty.call(SUPERSCRIPT_POWERS, match[0])) {
+         tokens.push({ name: 'PowerToken', value: '^', line, indent } as atype.Token);
+         tokens.push({ name: 'NumericToken', value: SUPERSCRIPT_POWERS[match[0]], line, indent } as atype.Token);
+         continue;
+      }
+
+      const word = Object.prototype.hasOwnProperty.call(wordAliases, match[0]) ? wordAliases[match[0]] : match[0];
       for (const { name, rule } of tokenStringMap) {
          if (word.match(rule!)) {
             tokens.push({ name, value: word, line, indent } as atype.Token);
@@ -109,5 +121,25 @@ export const lexer = (code: string) : Array<atype.Token> => {
          }
       }
    }
-   return tokens;
+   return mergeTwoWordEnds(tokens);
+}
+
+// 'end if', 'end while', 'end for', ... written as two words become the closing keyword
+function mergeTwoWordEnds(tokens: Array<atype.Token>): Array<atype.Token> {
+   const merged: Array<atype.Token> = [];
+   for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const next = tokens[i + 1];
+      if (token.name === 'IdentifierToken' && END_PREFIXES.includes(token.value!) && next && next.line === token.line) {
+         const combined = token.value! + next.value;
+         const closing = tokenStringMap.find(({ name, rule }) => name.startsWith('Close') && combined.match(rule!));
+         if (closing) {
+            merged.push({ name: closing.name, value: combined, line: token.line, indent: token.indent } as atype.Token);
+            i++;
+            continue;
+         }
+      }
+      merged.push(token);
+   }
+   return merged;
 };

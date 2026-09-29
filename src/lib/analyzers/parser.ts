@@ -40,6 +40,7 @@ export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[
             while (parserIndex < parserTokens.length - 1) {
                 parserIndex++;
                 const token = parserTokens[parserIndex];
+                if (isForStatement()) break;
                 if (token.name === 'IdentifierToken') {
                     const next = parserTokens[parserIndex + 1];
                     if (next && (next.name === 'AssignmentToken' || next.name === 'OpenBracketToken' || next.name === 'OpenParenToken')) break;
@@ -61,6 +62,9 @@ function parse() : atype.SentencesNode[] {
 
    if (token.name === 'DeclarationToken') {
       return declarationParser();
+   }
+   else if (isForStatement()) {
+      return [forParser()];
    }
    else if (token.name === 'IdentifierToken' && parserTokens[parserIndex + 1]?.name === 'OpenParenToken') {
       return [{ name: 'CallStatementNode', call: callParser() }];
@@ -145,6 +149,7 @@ function precedenceOf(token: atype.Token): number {
       case 'MultiplicationToken':
       case 'DivisionToken':
       case 'ModuleToken':     return 3;
+      case 'PowerToken':      return 4;
       default:                 return 0;
    }
 }
@@ -154,7 +159,8 @@ function atomParser(): atype.Node {
 
    if (token.name === 'SubstractionToken') {
       nextIndex();
-      const operand = atomParser();
+      // Takes powers along, so -x^2 is -(x^2)
+      const operand = expressionParser(3);
       return {
          name: 'ExpressionNode',
          left: { name: 'NumericNode', value: '0' } as atype.NumericNode,
@@ -187,6 +193,9 @@ function atomParser(): atype.Node {
       nextIndex();
       const inner = expressionParser(0);
       nextIndex();
+      if (parserTokens[parserIndex].name === 'AssignmentToken') {
+         throw new SyntaxError("Unexpected '=' in a condition. Use '==' to compare values, not '=' (assignment).");
+      }
       if (parserTokens[parserIndex].name !== 'CloseParenToken') {
          throw new SyntaxError("Missing ')' after expression.");
       }
@@ -233,7 +242,8 @@ function expressionParser(minPrecedence: number = 0): atype.Node {
       nextIndex();
       const operator = parserTokens[parserIndex] as atype.OperatorToken;
       nextIndex();
-      const right = expressionParser(prec);
+      // '^' is right associative: 2^3^2 = 2^(3^2)
+      const right = expressionParser(operator.name === 'PowerToken' ? prec - 1 : prec);
       left = { name: 'ExpressionNode', left, right, operator };
    }
 
@@ -353,16 +363,23 @@ function readParser() : atype.ReadNode[] {
    return reads;
 }
 
-function ifParser() : atype.IfNode {
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'OpenParenToken') {
-      expectOpenParen('if');
+// Condition of if/while, with or without brackets: if (a > b)  or  if a > b then
+function conditionParser(keyword: string): atype.Node {
+   if (!parserTokens[parserIndex + 1] || parserTokens[parserIndex + 1].line !== parserTokens[parserIndex].line) {
+      throw new SyntaxError(`Expected a condition after '${keyword}'.`);
    }
    nextIndex();
-   let expression = expressionParser();
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'CloseParenToken') {
-      expectCloseParen('if');
+   const expression = expressionParser();
+   if (parserTokens[parserIndex + 1]?.name === 'AssignmentToken') {
+      throw new SyntaxError(`Unexpected '=' in ${keyword} condition. Use '==' to compare values, not '=' (assignment).`);
+   }
+   return expression.name === 'GroupNode' ? expression.body : expression;
+}
+
+function ifParser() : atype.IfNode {
+   let expression = conditionParser('if');
+   if (parserTokens[parserIndex + 1]?.name === 'ThenToken') {
+      nextIndex();
    }
    nextIndex();
    let body = new Array<atype.SentencesNode>;
@@ -375,6 +392,14 @@ function ifParser() : atype.IfNode {
              throw new SyntaxError('An if statement can only have one else clause.');
           }
           storeSentencesInBody = false;
+
+          // 'else if' on one line chains into a nested if that shares the closing endif
+          const next = parserTokens[parserIndex + 1];
+          if (next?.name === 'OpenIfToken' && next.line === parserTokens[parserIndex].line) {
+             nextIndex();
+             alternative.push(ifParser());
+             break;
+          }
        }
       else {
             if (storeSentencesInBody) {
@@ -492,17 +517,57 @@ function repeatParser() : atype.RepeatNode {
    }
 }
 
+function isForStatement(): boolean {
+   return parserTokens[parserIndex]?.name === 'IdentifierToken' &&
+      parserTokens[parserIndex].value === 'for' &&
+      parserTokens[parserIndex + 1]?.name === 'IdentifierToken' &&
+      parserTokens[parserIndex + 2]?.value === 'from';
+}
+
+// for i from <start> to <end> [step <n>] ... endfor  (VCAA style, 'to' is inclusive)
+function forParser() : atype.RepeatNode {
+   nextIndex();
+   const counter = parserTokens[parserIndex];
+   nextIndex(); // 'from'
+   nextIndex();
+   const start = expressionParser();
+   nextIndex();
+   if (parserTokens[parserIndex].value !== 'to') {
+      throw new SyntaxError(`Expected 'to' in 'for ${counter.value} from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
+   }
+   nextIndex();
+   const to = expressionParser();
+
+   let steps: atype.Node = { name: 'NumericNode', value: '1' };
+   if (parserTokens[parserIndex + 1]?.value === 'step') {
+      nextIndex();
+      nextIndex();
+      steps = expressionParser();
+   }
+   nextIndex();
+
+   let forSentences = new Array<atype.SentencesNode>;
+   while (parserTokens[parserIndex].name !== 'CloseForToken') {
+      forSentences.push(...parse());
+      nextIndex();
+   }
+
+   return {
+      name: 'RepeatNode',
+      declaration: {
+         name: 'DeclarationNode',
+         identifier: counter.value!,
+         value: start
+      },
+      to: to,
+      steps: steps,
+      body: forSentences,
+      countUp: true
+   }
+}
+
 function whileParser() : atype.WhileNode {
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'OpenParenToken') {
-      expectOpenParen('while');
-   }
-   nextIndex();
-   let expression = expressionParser();
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'CloseParenToken') {
-      expectCloseParen('while');
-   }
+   let expression = conditionParser('while');
    nextIndex();
 
    let whileSentences = new Array<atype.SentencesNode>;

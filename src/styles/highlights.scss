@@ -20,8 +20,8 @@
 .hl-print {color: $hl-info-blue}
 .hl-read {color: $hl-info-green}
 .hl-var {color: $hl-info-green}
-.hl-if, .hl-else, .hl-endif, .hl-switch, .hl-endswitch {color: $hl-gold}
-.hl-repeat, .hl-endrepeat {color: $hl-purple}
+.hl-if, .hl-then, .hl-else, .hl-endif, .hl-switch, .hl-endswitch {color: $hl-gold}
+.hl-repeat, .hl-endrepeat, .hl-endfor {color: $hl-purple}
 .hl-while, .hl-endwhile {color: $hl-purple}
 .hl-dowhile, .hl-enddowhile {color: $hl-purple}
 .hl-define, .hl-enddefine, .hl-return {color: $hl-info-blue}

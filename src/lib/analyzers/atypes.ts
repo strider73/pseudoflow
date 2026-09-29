@@ -31,6 +31,9 @@ export type DivisionToken =            { name: 'DivisionToken', rule?: RegExp, v
 export type ModuleToken =              { name: 'ModuleToken', rule?: RegExp, value?: string };
 export type RelationalToken =          { name: 'RelationalToken', rule?: RegExp, value?: string };
 export type NotToken =                 { name: 'NotToken', rule?: RegExp, value?: string };
+export type ThenToken =                { name: 'ThenToken', rule?: RegExp, value?: string };
+export type CloseForToken =            { name: 'CloseForToken', rule?: RegExp, value?: string };
+export type PowerToken =               { name: 'PowerToken', rule?: RegExp, value?: string };
 export type BooleanToken =             { name: 'BooleanToken', rule?: RegExp, value?: string };
 export type StringToken =              { name: 'StringToken', rule?: RegExp, value?: string };
 export type NumericToken =             { name: 'NumericToken', rule?: RegExp, value?: string };
@@ -46,7 +49,8 @@ export type ArithmeticToken =
    SubstractionToken          | 
    MultiplicationToken        | 
    DivisionToken              | 
-   ModuleToken;
+   ModuleToken                |
+   PowerToken;
 
 export type OperatorToken =
    ArithmeticToken            |
@@ -86,6 +90,8 @@ export type Token = { line?: number, indent?: number } & (
    RelationalToken            | 
    BooleanToken               | 
    NotToken                   | 
+   ThenToken                  | 
+   CloseForToken              | 
    StringToken                | 
    NumericToken               | 
    IdentifierToken            | 
@@ -106,7 +112,7 @@ export type ReadNode =                 { name: 'ReadNode', identifier: Identifie
 export type IfNode =                   { name: 'IfNode', argument: Node, body: SentencesNode[], alternative: SentencesNode[] };
 export type SwitchNode =               { name: 'SwitchNode', argument: Node, cases: CaseNode[] };
 export type CaseNode =                 { name: 'CaseNode', argument: Node, body: SentencesNode[]};
-export type RepeatNode =               { name: 'RepeatNode', declaration: DeclarationNode, to: Node, steps: Node, body: SentencesNode[] };
+export type RepeatNode =               { name: 'RepeatNode', declaration: DeclarationNode, to: Node, steps: Node, body: SentencesNode[], countUp?: boolean };
 export type WhileNode =                { name: 'WhileNode', argument: Node, body: SentencesNode[]};
 export type DowhileNode =              { name: 'DowhileNode', argument: Node, body: SentencesNode[], do: boolean};
 export type FunctionDefNode =          { name: 'FunctionDefNode', identifier: string, params: string[], body: SentencesNode[], line?: number };

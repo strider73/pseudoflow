@@ -42,7 +42,7 @@
            undoer.pushManual(editorElement.innerText, getCurrentRow());
            syncUndoState();
            undoer.beginBatch();
-           insertTemplate(commandToInsert.template);
+           insertTemplate(commandToInsert.template, commandToInsert.inline);
            undoer.endBatch(editorElement.innerText);
            setTimeout(() => beautifyCode());
         }

@@ -58,6 +58,15 @@
          timestamp: Date.now()
       }
    }
+   const symbols = ['←', '≠', '≤', '≥', '×', '^', '²', '³'];
+   function symbolCmd(e: MouseEvent, symbol: string) {
+      e.preventDefault();
+      command = {
+         template: symbol,
+         inline: true,
+         timestamp: Date.now()
+      }
+   }
    function defineCmd(e: MouseEvent) {
       e.preventDefault();
       command = {
@@ -79,6 +88,9 @@
       <li on:mousedown="{whileCmd}">{$translationStore.APP_CMD_WHILE}</li>
       <li on:mousedown="{dowhileCmd}">{$translationStore.APP_CMD_DOWHILE}</li>
       <li on:mousedown="{defineCmd}">{$translationStore.APP_CMD_DEFINE}</li>
+      {#each symbols as symbol}
+         <li class="symbol" on:mousedown="{e => symbolCmd(e, symbol)}">{symbol}</li>
+      {/each}
    </ul>
 </div>
 
@@ -109,6 +121,10 @@
 
             &:hover {
                color: $accent-color;
+            }
+
+            &.symbol {
+               padding: 0.3rem 0.45rem;
             }
          }
 
