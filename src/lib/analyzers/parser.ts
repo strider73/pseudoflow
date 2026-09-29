@@ -196,6 +196,15 @@ function atomParser(): atype.Node {
       return randomPhraseParser();
    }
 
+   if (
+      token.name === 'IdentifierToken' && token.value === 'an' &&
+      ['integer', 'drawn', 'uniformly', 'at', 'random', 'from'].every(
+         (word, offset) => parserTokens[parserIndex + offset + 1]?.value === word
+      )
+   ) {
+      return uniformRandomPhraseParser();
+   }
+
    // 'empty list' is a list with no elements
    const nextToken = parserTokens[parserIndex + 1];
    if (
@@ -851,6 +860,30 @@ function randomPhraseParser(): atype.CallNode {
          right: { name: 'NumericNode', value: '1' },
          operator: { name: 'SubstractionToken', value: '-' }
       };
+   }
+
+   return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
+}
+
+// an integer drawn uniformly at random from [<low>, <high>] -> randominteger(low, high)
+function uniformRandomPhraseParser(): atype.CallNode {
+   for (let i = 0; i < 7; i++) nextIndex();
+   if (parserTokens[parserIndex].name !== 'OpenBracketToken') {
+      throw new SyntaxError("Expected '[' after 'an integer drawn uniformly at random from'.");
+   }
+
+   nextIndex();
+   const low = expressionParser();
+   nextIndex();
+   if (parserTokens[parserIndex].name !== 'CommaToken') {
+      throw new SyntaxError("Expected ',' between the random integer bounds.");
+   }
+
+   nextIndex();
+   const high = expressionParser();
+   nextIndex();
+   if (parserTokens[parserIndex].name !== 'CloseBracketToken') {
+      throw new SyntaxError("Expected ']' after the random integer bounds.");
    }
 
    return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
