@@ -5,6 +5,9 @@
 export type DeclarationToken =         { name: 'DeclarationToken', rule?: RegExp, value?: string };
 export type ReadToken =                { name: 'ReadToken', rule?: RegExp, value?: string };
 export type PrintToken =               { name: 'PrintToken', rule?: RegExp, value?: string };
+export type DefineToken =              { name: 'DefineToken', rule?: RegExp, value?: string };
+export type CloseDefineToken =         { name: 'CloseDefineToken', rule?: RegExp, value?: string };
+export type ReturnToken =              { name: 'ReturnToken', rule?: RegExp, value?: string };
 export type AssignmentToken =          { name: 'AssignmentToken', rule?: RegExp, value?: string };
 export type OpenParenToken =           { name: 'OpenParenToken', rule?: RegExp, value?: string };
 export type CloseParenToken =          { name: 'CloseParenToken', rule?: RegExp, value?: string };
@@ -59,6 +62,9 @@ export type Token = { line?: number } & (
    DeclarationToken           | 
    PrintToken                 | 
    ReadToken                  | 
+   DefineToken                | 
+   CloseDefineToken           | 
+   ReturnToken                | 
    AssignmentToken            | 
    OpenParenToken             | 
    CloseParenToken            | 
@@ -101,6 +107,10 @@ export type CaseNode =                 { name: 'CaseNode', argument: Node, body:
 export type RepeatNode =               { name: 'RepeatNode', declaration: DeclarationNode, to: Node, steps: Node, body: SentencesNode[] };
 export type WhileNode =                { name: 'WhileNode', argument: Node, body: SentencesNode[]};
 export type DowhileNode =              { name: 'DowhileNode', argument: Node, body: SentencesNode[], do: boolean};
+export type FunctionDefNode =          { name: 'FunctionDefNode', identifier: string, params: string[], body: SentencesNode[], line?: number };
+export type ReturnNode =               { name: 'ReturnNode', value?: Node };
+export type CallStatementNode =        { name: 'CallStatementNode', call: CallNode };
+export type CallNode =                 { name: 'CallNode', callee: string, args: Node[] };
 export type GroupNode =                { name: 'GroupNode', body: Node };
 export type IdentifierNode =           { name: 'IdentifierNode', value: string | undefined };
 export type StringNode =               { name: 'StringNode', value: string | undefined };
@@ -118,7 +128,10 @@ export type SentencesNode =
    SwitchNode                 | 
    RepeatNode                 | 
    WhileNode                  | 
-   DowhileNode;
+   DowhileNode                | 
+   FunctionDefNode            | 
+   ReturnNode                 | 
+   CallStatementNode;
 
 // *******************************************
 // Expressions
@@ -154,4 +167,5 @@ export type Node =
    NumericNode                |
    ArrayNode                  |
    ArrayIndexNode             |
-   PropertyAccessNode;
+   PropertyAccessNode         |
+   CallNode;

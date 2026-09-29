@@ -18,6 +18,60 @@ export function terminatorSymbol(
    });
 }
 
+export function functionTerminatorSymbol(
+   baseSize: number, 
+   position: { x: number, y: number }, 
+   color: string = '#4d5166'
+) {
+   return new Konva.Rect({
+      x: position.x,
+      y: position.y,
+      width: baseSize * 0.45,
+      height: baseSize * 0.12,
+      offsetX: baseSize * 0.225,
+      offsetY: baseSize * 0.06,
+      fill: color,
+      cornerRadius: baseSize * 0.06,
+      opacity: 1
+   });
+}
+
+// Predefined process (function call): a task box with double side bars
+export function callSymbol(
+   baseSize: number, 
+   position: { x: number, y: number }, 
+   color: string = '#00ff95',
+   barColor: string = '#4d5166'
+) {
+   const width = baseSize * 0.5;
+   const height = baseSize * 0.2;
+   const inset = baseSize * 0.04;
+   const group = new Konva.Group({
+      x: position.x,
+      y: position.y,
+      width: width,
+      height: height
+   });
+
+   group.add(new Konva.Rect({
+      width: width,
+      height: height,
+      offsetX: width * 0.5,
+      offsetY: height * 0.5,
+      fill: color
+   }));
+   [-1, 1].forEach(side => {
+      const x = side * (width * 0.5 - inset);
+      group.add(new Konva.Line({
+         points: [x, -height * 0.5, x, height * 0.5],
+         stroke: barColor,
+         strokeWidth: 4
+      }));
+   });
+
+   return group;
+}
+
 export function taskSymbol(
    baseSize: number, 
    position: { x: number, y: number }, 

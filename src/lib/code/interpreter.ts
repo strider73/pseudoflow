@@ -5,26 +5,42 @@ let interpreterVariables: Array<{identifier: string, value: unknown}>;
 let shouldReadInput: boolean;
 let runningSentences: atype.SentencesNode[];
 let lastNode: atype.SentencesNode;
+let interpreterFunctions = new Map<string, atype.FunctionDefNode>();
+let callDepth = 0;
+const MAX_CALL_DEPTH = 1000;
 
 export function interpreter(sentences: atype.SentencesNode[] = runningSentences): {prints: string, interruptedForInput: boolean, pendingSentences: atype.SentencesNode[], lastNode: atype.SentencesNode | undefined} {
    interpreterPrints = '';
    shouldReadInput = false;
    runningSentences = [...sentences];
 
-   while (runningSentences.length) {
-      const node = runningSentences.shift()!;
-      lastNode = node;
-      if (node.name === 'ReadNode') {
-         interpreterVariables.push({
-            identifier: node.identifier.value,
-            value: undefined
-         });
-         shouldReadInput = true;
-         break;
+   // Functions can be called before their definition, so register them all up front
+   runningSentences.forEach(node => {
+      if (node.name === 'FunctionDefNode') {
+         interpreterFunctions.set(node.identifier, node);
       }
+   });
 
-      const newNode = interpretTreeNode(node);
-      interpreterPrints += newNode!.print;
+   try {
+      while (runningSentences.length) {
+         const node = runningSentences.shift()!;
+         lastNode = node;
+         if (node.name === 'ReadNode') {
+            interpreterVariables.push({
+               identifier: node.identifier.value,
+               value: undefined
+            });
+            shouldReadInput = true;
+            break;
+         }
+
+         const newNode = interpretTreeNode(node);
+         interpreterPrints += newNode!.print;
+      }
+   } catch (e) {
+      interpreterPrints += 'Runtime error: ' + (e instanceof Error ? e.message : String(e)) + '<br>';
+      runningSentences = [];
+      shouldReadInput = false;
    }
 
    return {
@@ -40,10 +56,71 @@ export function interpreterReset(): void {
    shouldReadInput = false;
    interpreterVariables = [];
    runningSentences = [];
+   interpreterFunctions = new Map();
+   callDepth = 0;
 }
 
 export function addSentence(sentence: atype.SentencesNode, index: number): void {
    runningSentences.splice(index, 0, sentence);
+}
+
+function toStoredValue(value: any): any {
+   return Array.isArray(value) ? value : (isNaN(value) ? '"' + value + '"' : value);
+}
+
+function lastVariableIndex(identifier: string | undefined): number {
+   for (let i = interpreterVariables.length - 1; i >= 0; i--) {
+      if (interpreterVariables[i]['identifier'] === identifier) return i;
+   }
+   return -1;
+}
+
+// Runs a function body to completion and returns its value. Parameters and
+// local declarations are pushed on top of the variables list and dropped on
+// exit, so they shadow globals while the function runs.
+function callFunction(call: atype.CallNode): any {
+   const fn = interpreterFunctions.get(call.callee);
+   if (!fn) {
+      throw new Error(`Function '${call.callee}' is not defined`);
+   }
+   if (fn.params.length !== call.args.length) {
+      throw new Error(`Function '${call.callee}' expects ${fn.params.length} argument(s) but got ${call.args.length}`);
+   }
+   if (callDepth >= MAX_CALL_DEPTH) {
+      throw new Error(`Too many nested calls to '${call.callee}' (limit ${MAX_CALL_DEPTH})`);
+   }
+
+   const argValues = call.args.map(arg => toStoredValue(safeEval(valueBuilder(arg))));
+   const savedSentences = runningSentences;
+   const savedLength = interpreterVariables.length;
+   callDepth++;
+
+   try {
+      fn.params.forEach((param, index) => {
+         interpreterVariables.push({ identifier: param, value: argValues[index] });
+      });
+
+      runningSentences = [...fn.body];
+      while (runningSentences.length) {
+         const node = runningSentences.shift()!;
+         if (node.name === 'ReturnNode') {
+            return node.value ? safeEval(valueBuilder(node.value)) : undefined;
+         }
+         interpreterPrints += interpretTreeNode(node).print;
+      }
+      return undefined;
+   } finally {
+      runningSentences = savedSentences;
+      interpreterVariables.length = savedLength;
+      callDepth--;
+   }
+}
+
+function literalFromValue(value: any): string {
+   if (Array.isArray(value)) return JSON.stringify(value);
+   if (typeof value === 'string') return '"' + value + '"';
+   if (typeof value === 'number') return '(' + value + ')';
+   return String(value);
 }
 
 function interpretTreeNode(node: atype.SentencesNode): {print: string} {
@@ -58,30 +135,26 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
       return { print: '' };
    }
    else if (node.name === 'AssignmentNode') {
+      // Evaluate once, then assign to the innermost variable with that name
       if (node.identifier.name === 'ArrayIndexNode') {
          const arrayName = node.identifier.array.value;
-          const index = safeEval(valueBuilder(node.identifier.index));
-          const builtValue = valueBuilder(node.value);
-          const value = safeEval(builtValue);
-          const storedValue = Array.isArray(value) ? value : (isNaN(value) ? '"' + value + '"' : value);
+         const index = safeEval(valueBuilder(node.identifier.index));
+         const storedValue = toStoredValue(safeEval(valueBuilder(node.value)));
 
-         for (let i = 0; i < interpreterVariables.length; i++) {
-            if (interpreterVariables[i]['identifier'] === arrayName) {
-               let arr = interpreterVariables[i]['value'];
-               if (!Array.isArray(arr)) {
-                  interpreterVariables[i]['value'] = [];
-                  arr = interpreterVariables[i]['value'];
-               }
-               arr[index] = storedValue;
+         const i = lastVariableIndex(arrayName);
+         if (i >= 0) {
+            let arr = interpreterVariables[i]['value'];
+            if (!Array.isArray(arr)) {
+               interpreterVariables[i]['value'] = [];
+               arr = interpreterVariables[i]['value'];
             }
+            arr[index] = storedValue;
          }
       } else {
-         for (let index = 0; index < interpreterVariables.length; index++) {
-            if (interpreterVariables[index]['identifier'] === node.identifier.value) {
-               const builtValue = valueBuilder(node.value);
-               const value = safeEval(builtValue);
-               interpreterVariables[index]['value'] = Array.isArray(value) ? value : (isNaN(value) ? '"' + value + '"' : value);
-            }
+         const storedValue = toStoredValue(safeEval(valueBuilder(node.value)));
+         const i = lastVariableIndex(node.identifier.value);
+         if (i >= 0) {
+            interpreterVariables[i]['value'] = storedValue;
          }
       }
 
@@ -199,6 +272,13 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
 
       return { print: '' };
    }
+   else if (node.name === 'CallStatementNode') {
+      callFunction(node.call);
+      return { print: '' };
+   }
+
+   // FunctionDefNode is registered up front and does nothing when reached
+   return { print: '' };
 }
 
 function groupBuilder(groupNode: atype.GroupNode, enableVariables: boolean = true): string {
@@ -537,6 +617,12 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
    }
    else if (node.name === 'ArrayNode') {
       value = '[' + node.elements.map(el => valueBuilder(el, enableVariables)).join(',') + ']';
+   }
+   else if (node.name === 'CallNode' && !enableVariables) {
+      value = node.callee + '(' + node.args.map(arg => valueBuilder(arg, false)).join(', ') + ')';
+   }
+   else if (node.name === 'CallNode') {
+      value = literalFromValue(callFunction(node));
    }
    else if (node.name === 'ExpressionNode') {
       value = expressionBuilder(node, enableVariables);

@@ -10,6 +10,8 @@ const BOOLEAN_OPS = ['&&', '||']
 export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): AnalysisError[] {
    const errors: AnalysisError[] = []
    const symbols: { name: string, type?: ValueType }[] = []
+   const functions = new Map<string, atype.FunctionDefNode>()
+   let scopeStart = 0
 
    function walkNode(node: atype.SentencesNode) {
       switch (node.name) {
@@ -96,6 +98,14 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'DowhileNode':
             checkTypeInValue(node.argument)
             node.body.forEach(walkNode)
+            break
+
+         case 'ReturnNode':
+            checkTypeInValue(node.value)
+            break
+
+         case 'CallStatementNode':
+            checkTypeInValue(node.call)
             break
       }
    }
@@ -189,11 +199,40 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'PropertyAccessNode':
             checkTypeInValue(node.object)
             break
+         case 'CallNode':
+            checkCall(node)
+            break
       }
    }
 
+   function checkCall(node: atype.CallNode) {
+      const fn = functions.get(node.callee)
+      if (!fn) {
+         errors.push({ type: 'semantic', message: `Function '${node.callee}' is not defined` })
+      }
+      else if (fn.params.length !== node.args.length) {
+         errors.push({ type: 'semantic', message: `Function '${node.callee}' expects ${fn.params.length} argument(s) but got ${node.args.length}` })
+      }
+      node.args.forEach(arg => {
+         checkArrayInScalarContext(arg)
+         checkTypeInValue(arg)
+      })
+   }
+
+   function walkFunction(fn: atype.FunctionDefNode) {
+      const savedLength = symbols.length
+      scopeStart = savedLength
+      fn.params.forEach(param => symbols.push({ name: param }))
+      fn.body.forEach(walkNode)
+      symbols.length = savedLength
+      scopeStart = 0
+   }
+
    function findSymbol(name: string) {
-      return symbols.find(s => s.name === name)
+      for (let i = symbols.length - 1; i >= 0; i--) {
+         if (symbols[i].name === name) return symbols[i]
+      }
+      return undefined
    }
 
    function checkDeclared(name: string) {
@@ -203,7 +242,7 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
    }
 
    function checkRedeclared(name: string) {
-      if (symbols.some(s => s.name === name)) {
+      if (symbols.slice(scopeStart).some(s => s.name === name)) {
          errors.push({ type: 'semantic', message: `Variable '${name}' is already declared` })
       }
    }
@@ -222,6 +261,19 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
       }
    }
 
-   program.body.forEach(walkNode)
+   // Register functions first so they can be called before their definition
+   program.body.forEach(node => {
+      if (node.name !== 'FunctionDefNode') return
+      if (functions.has(node.identifier)) {
+         errors.push({ type: 'semantic', message: `Function '${node.identifier}' is already defined` })
+      }
+      functions.set(node.identifier, node)
+   })
+
+   // Walk the main program first, so functions can see its global variables
+   program.body.filter(node => node.name !== 'FunctionDefNode').forEach(walkNode)
+   program.body.forEach(node => {
+      if (node.name === 'FunctionDefNode') walkFunction(node)
+   })
    return errors
 }

@@ -24,6 +24,7 @@
 .hl-repeat, .hl-endrepeat {color: $hl-purple}
 .hl-while, .hl-endwhile {color: $hl-purple}
 .hl-dowhile, .hl-enddowhile {color: $hl-purple}
+.hl-define, .hl-enddefine, .hl-return {color: $hl-info-blue}
 .hl-activerow {outline: 1px solid $hl-active-outline}
 .line-selected::before {
    content: '';

@@ -1,7 +1,7 @@
 import type * as atype from "../analyzers/atypes";
 import type Konva from 'konva';
 import type { ChartPalette } from "../themes";
-import { terminatorSymbol, taskSymbol, decisionSymbol, dataSymbol, textLabel, arrowSymbol, autoReturnArrowSymbol, loopArrowSymbol } from "./symbols";
+import { terminatorSymbol, functionTerminatorSymbol, callSymbol, taskSymbol, decisionSymbol, dataSymbol, textLabel, arrowSymbol, autoReturnArrowSymbol, loopArrowSymbol } from "./symbols";
 import { valueBuilder } from "../code/interpreter";
 import { codeWordStore } from "../stores";
 
@@ -32,19 +32,46 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
       y: defaultVerticalSpace
    }
 
-   let rootSymbols: any[] = [];
+   // Function definitions are drawn as separate charts below the main program
+   const mainSentences = runningSentences.filter(node => node.name !== 'FunctionDefNode');
+   const functionDefs = runningSentences.filter(node => node.name === 'FunctionDefNode') as atype.FunctionDefNode[];
 
-   if (runningSentences.length) {
-      const startSymbol = terminatorSymbol(baseSize, {
-         x: baseSize * 0.5,
-         y: chartDimensions.y
-      }, chartPalette.terminator);
-      const startRect = addSymbol(startSymbol);
+   if (mainSentences.length) {
+      drawSequence(mainSentences);
+   }
+
+   functionDefs.forEach(fn => {
+      chartDimensions.y += defaultVerticalSpace;
+      const endsWithReturn = fn.body.at(-1)?.name === 'ReturnNode';
+      drawSequence(
+         fn.body,
+         fn.identifier + '(' + fn.params.join(', ') + ')',
+         endsWithReturn ? undefined : reservedWords.CODE_ENDDEFINE
+      );
+   });
+
+   return chartDimensions;
+
+   function drawSequence(sequence: atype.SentencesNode[], startLabel?: string, endLabel?: string) {
+      let rootSymbols: any[] = [];
+      let pendingSentences = [...sequence];
+      columnSymbol = [];
+
+      const startPosition = { x: baseSize * 0.5, y: chartDimensions.y };
+      const startRect = addSymbol(startLabel === undefined
+         ? terminatorSymbol(baseSize, startPosition, chartPalette.terminator)
+         : functionTerminatorSymbol(baseSize, startPosition, chartPalette.terminator));
+      if (startLabel !== undefined) {
+         symbolsLayer.add(textLabel(startLabel, startPosition, {
+            width: startRect.width,
+            height: startRect.height
+         }, chartPalette.whiteLabel, chartFontSize));
+      }
       rootSymbols.push(startRect);
-      chartDimensions.y += startRect.y  + defaultVerticalSpace * 0.5;
+      chartDimensions.y = startRect.y + defaultVerticalSpace * 1.5;
 
-      while (runningSentences.length) {
-         const sentenceNode = runningSentences.shift()!;
+      while (pendingSentences.length) {
+         const sentenceNode = pendingSentences.shift()!;
          const treeNode = readTreeNode(sentenceNode, {
             x: baseSize * 0.5,
             y: chartDimensions.y
@@ -57,18 +84,27 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
          addFlow(rootSymbols.at(-2), rootSymbols.at(-1));
          columnSymbol = [];
       }
-      
-      const endSymbol = terminatorSymbol(baseSize, {
-         x: baseSize * 0.5,
-         y: chartDimensions.y
-      }, chartPalette.terminator);
-      const endRect = addSymbol(endSymbol);
+
+      // A function whose last step is a return already ends there
+      if (startLabel !== undefined && endLabel === undefined) {
+         chartDimensions.y += defaultVerticalSpace * 0.5;
+         return;
+      }
+
+      const endPosition = { x: baseSize * 0.5, y: chartDimensions.y };
+      const endRect = addSymbol(endLabel === undefined
+         ? terminatorSymbol(baseSize, endPosition, chartPalette.terminator)
+         : functionTerminatorSymbol(baseSize, endPosition, chartPalette.terminator));
+      if (endLabel !== undefined) {
+         symbolsLayer.add(textLabel(endLabel, endPosition, {
+            width: endRect.width,
+            height: endRect.height
+         }, chartPalette.whiteLabel, chartFontSize));
+      }
       rootSymbols.push(endRect);
       addFlow(rootSymbols.at(-2), rootSymbols.at(-1));
       chartDimensions.y = endRect.y  + defaultVerticalSpace;
    }
-
-   return chartDimensions;
 
    function readTreeNode(node: atype.SentencesNode, position: Vector): any {
       let treeNodeRect: Rect | undefined = undefined;
@@ -111,6 +147,32 @@ export function grapher(sentences: atype.SentencesNode[], backLayer: Konva.Layer
             width: treeNodeRect.width,
             height: treeNodeRect.height
          }, chartPalette.text, chartFontSize);
+         symbolsLayer.add(textNode);
+
+         treeNodeDimensions.y = treeNodeRect.height * 0.5 + defaultVerticalSpace;
+      }
+      else if (node.name === 'CallStatementNode') {
+         treeNodeRect = addSymbol(callSymbol(baseSize, position, chartPalette.task, chartPalette.terminator));
+
+         const textNode = textLabel(valueBuilder(node.call, false) as string, position, {
+            width: treeNodeRect.width * 0.85,
+            height: treeNodeRect.height
+         }, chartPalette.text, chartFontSize);
+         symbolsLayer.add(textNode);
+
+         treeNodeDimensions.y = treeNodeRect.height * 0.5 + defaultVerticalSpace;
+      }
+      else if (node.name === 'ReturnNode') {
+         treeNodeRect = addSymbol(functionTerminatorSymbol(baseSize, position, chartPalette.terminator));
+
+         let textValue = reservedWords.CODE_RETURN;
+         if (node.value) {
+            textValue += ' ' + valueBuilder(node.value, false);
+         }
+         const textNode = textLabel(textValue, position, {
+            width: treeNodeRect.width,
+            height: treeNodeRect.height
+         }, chartPalette.whiteLabel, chartFontSize);
          symbolsLayer.add(textNode);
 
          treeNodeDimensions.y = treeNodeRect.height * 0.5 + defaultVerticalSpace;

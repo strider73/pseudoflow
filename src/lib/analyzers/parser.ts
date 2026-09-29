@@ -8,11 +8,12 @@ codeWordStore.subscribe(value => {
 
 let parserIndex: number;
 let parserTokens: Array<atype.Token>;
+let insideDefine = false;
 
 const STATEMENT_START_TOKENS = [
    'DeclarationToken', 'PrintToken', 'ReadToken', 'IdentifierToken',
    'OpenIfToken', 'OpenSwitchToken', 'OpenRepeatToken',
-   'OpenWhileToken', 'OpenDowhileToken'
+   'OpenWhileToken', 'OpenDowhileToken', 'DefineToken', 'ReturnToken'
 ];
 
 export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[], errors: atype.AnalysisError[] } => {
@@ -23,6 +24,7 @@ export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[
 
     while (parserIndex + 1 < parserTokens.length) {
        const outerLine = parserTokens[parserIndex]?.line
+       insideDefine = false;
        try {
            program.body.push(...parse());
           if (parserTokens[parserIndex + 1])
@@ -40,7 +42,7 @@ export const parser = (tokens: Array<atype.Token>): { body: atype.SentencesNode[
                 const token = parserTokens[parserIndex];
                 if (token.name === 'IdentifierToken') {
                     const next = parserTokens[parserIndex + 1];
-                    if (next && (next.name === 'AssignmentToken' || next.name === 'OpenBracketToken')) break;
+                    if (next && (next.name === 'AssignmentToken' || next.name === 'OpenBracketToken' || next.name === 'OpenParenToken')) break;
                     continue;
                 }
                 if (STATEMENT_START_TOKENS.includes(token.name)) break;
@@ -60,6 +62,9 @@ function parse() : atype.SentencesNode[] {
    if (token.name === 'DeclarationToken') {
       return declarationParser();
    }
+   else if (token.name === 'IdentifierToken' && parserTokens[parserIndex + 1]?.name === 'OpenParenToken') {
+      return [{ name: 'CallStatementNode', call: callParser() }];
+   }
    else if (token.name === 'IdentifierToken') {
       return [assignmentParser()];
    }
@@ -67,7 +72,22 @@ function parse() : atype.SentencesNode[] {
       return [printParser()];
    }
    else if (token.name === 'ReadToken') {
+      if (insideDefine) {
+         throw new SyntaxError(`'${token.value}' cannot be used inside a function. Pass the value as a parameter instead.`);
+      }
       return readParser();
+   }
+   else if (token.name === 'DefineToken') {
+      if (insideDefine) {
+         throw new SyntaxError(`A function cannot be defined inside another function. Close it with '${reservedWords.CODE_ENDDEFINE}' first.`);
+      }
+      return [defineParser()];
+   }
+   else if (token.name === 'ReturnToken') {
+      if (!insideDefine) {
+         throw new SyntaxError(`'${token.value}' can only be used inside a function.`);
+      }
+      return [returnParser()];
    }
    else if (token.name === 'OpenIfToken') {
       return [ifParser()];
@@ -165,6 +185,12 @@ function atomParser(): atype.Node {
       parserTokens[parserIndex + 1]?.name === 'OpenBracketToken'
    ) {
       return arrayIndexParser();
+   }
+   else if (
+      token.name === 'IdentifierToken' &&
+      parserTokens[parserIndex + 1]?.name === 'OpenParenToken'
+   ) {
+      return callParser();
    }
 
    return tokenToNode(token);
@@ -499,6 +525,98 @@ function dowhileParser() : atype.DowhileNode {
       body: dowhileSentences,
       do: true
    }
+}
+
+function defineParser() : atype.FunctionDefNode {
+   const line = parserTokens[parserIndex].line;
+   nextIndex();
+   const identifier = parserTokens[parserIndex];
+   if (identifier.name !== 'IdentifierToken') {
+      throw new SyntaxError(`Expected a function name after '${reservedWords.CODE_DEFINE}' but found '${identifier.value}'.`);
+   }
+   nextIndex();
+   if (parserTokens[parserIndex].name !== 'OpenParenToken') {
+      expectOpenParen(identifier.value!);
+   }
+
+   const params: string[] = [];
+   nextIndex();
+   while (parserTokens[parserIndex].name !== 'CloseParenToken') {
+      const param = parserTokens[parserIndex];
+      if (param.name !== 'IdentifierToken') {
+         throw new SyntaxError(`Expected a parameter name in '${identifier.value}' but found '${param.value}'.`);
+      }
+      if (params.includes(param.value!)) {
+         throw new SyntaxError(`Parameter '${param.value}' is repeated in '${identifier.value}'.`);
+      }
+      params.push(param.value!);
+      nextIndex();
+      if (parserTokens[parserIndex].name === 'CommaToken') {
+         nextIndex();
+      }
+      else if (parserTokens[parserIndex].name !== 'CloseParenToken') {
+         throw new SyntaxError(`Expected ',' or ')' after parameter '${param.value}'.`);
+      }
+   }
+
+   // Optional colon after the parameter list (VCAA style)
+   if (parserTokens[parserIndex + 1]?.value === ':') {
+      nextIndex();
+   }
+
+   insideDefine = true;
+   let body = new Array<atype.SentencesNode>;
+   do {
+      if (!parserTokens[parserIndex + 1]) {
+         throw new SyntaxError(`Missing '${reservedWords.CODE_ENDDEFINE}' to close function '${identifier.value}'.`);
+      }
+      nextIndex();
+      if (parserTokens[parserIndex].name === 'CloseDefineToken') break;
+      body.push(...parse());
+   } while (true);
+   insideDefine = false;
+
+   return {
+      name: 'FunctionDefNode',
+      identifier: identifier.value!,
+      params: params,
+      body: body,
+      line: line
+   }
+}
+
+function returnParser() : atype.ReturnNode {
+   const token = parserTokens[parserIndex];
+   const next = parserTokens[parserIndex + 1];
+   const valueStartTokens = ['NumericToken', 'StringToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken', 'SubstractionToken'];
+
+   // A value is only taken from the same line, so a bare return followed by another statement works
+   if (next && next.line === token.line && valueStartTokens.includes(next.name)) {
+      nextIndex();
+      return { name: 'ReturnNode', value: expressionParser() };
+   }
+
+   return { name: 'ReturnNode' };
+}
+
+function callParser(): atype.CallNode {
+   const callee = parserTokens[parserIndex].value!;
+   nextIndex(); // '('
+
+   const args: atype.Node[] = [];
+   nextIndex();
+   while (parserTokens[parserIndex].name !== 'CloseParenToken') {
+      args.push(expressionParser());
+      nextIndex();
+      if (parserTokens[parserIndex].name === 'CommaToken') {
+         nextIndex();
+      }
+      else if (parserTokens[parserIndex].name !== 'CloseParenToken') {
+         throw new SyntaxError(`Expected ',' or ')' in call to '${callee}'.`);
+      }
+   }
+
+   return { name: 'CallNode', callee, args };
 }
 
 function arrayParser(): atype.ArrayNode {

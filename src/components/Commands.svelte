@@ -58,6 +58,13 @@
          timestamp: Date.now()
       }
    }
+   function defineCmd(e: MouseEvent) {
+      e.preventDefault();
+      command = {
+         template: $codeWordStore.CODE_DEFINE + ' xyz(a):\n\n' + $codeWordStore.CODE_RETURN + ' a\n' + $codeWordStore.CODE_ENDDEFINE,
+         timestamp: Date.now()
+      }
+   }
 </script>
 
 
@@ -71,6 +78,7 @@
       <li on:mousedown="{forCmd}">{$translationStore.APP_CMD_FOR}</li>
       <li on:mousedown="{whileCmd}">{$translationStore.APP_CMD_WHILE}</li>
       <li on:mousedown="{dowhileCmd}">{$translationStore.APP_CMD_DOWHILE}</li>
+      <li on:mousedown="{defineCmd}">{$translationStore.APP_CMD_DEFINE}</li>
    </ul>
 </div>
 
