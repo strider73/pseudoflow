@@ -1,9 +1,19 @@
 import type * as atype from './atypes'
-import { codeWordStore } from "../stores";
+import type { Convention, Phrase, PhrasePart } from '../convention/loader';
+import { codeWordStore, conventionStore } from "../stores";
+import { lexer } from './lexer';
 
 let reservedWords;
 codeWordStore.subscribe(value => {
    reservedWords = value;
+});
+
+let convention: Convention;
+let phraseStarts = new Set<string>();
+conventionStore.subscribe(value => {
+   if (!value) return;
+   convention = value;
+   phraseStarts = new Set(value.phrases.flatMap(phrase => (phrase.parts[0] as { options: string[] }).options));
 });
 
 let parserIndex: number;
@@ -125,14 +135,13 @@ function parse() : atype.SentencesNode[] {
    throw new SyntaxError(`Unexpected '${token.value || token.name}'. A statement like declare, if, while, or an identifier was expected here.`);
 }
 
-// 'Input: <text>' and 'Output: <text>' describe the code that follows; they are read as
-// headings, not statements. 'Algorithm:' is its own token, since it starts a chart
-const HEADER_WORDS = ['input', 'output'];
+// A 'skip' heading from the convention ('Input: <text>', 'Output: <text>') describes the code
+// that follows; it is read as a heading, not a statement. A 'chart' heading is its own token
 
 function isHeaderLine(): boolean {
    const token = parserTokens[parserIndex];
    const next = parserTokens[parserIndex + 1];
-   return token.name === 'IdentifierToken' && HEADER_WORDS.includes(token.value!.toLowerCase()) &&
+   return token.name === 'IdentifierToken' && convention.headings[token.value!.toLowerCase()] === 'skip' &&
       next?.line === token.line && next.value === ':';
 }
 
@@ -215,78 +224,17 @@ function atomParser(): atype.Node {
       throw new SyntaxError('Expected a value');
    }
 
-   if (
-      token.name === 'IdentifierToken' && token.value === 'random' &&
-      parserTokens[parserIndex + 1]?.value === 'integer' &&
-      parserTokens[parserIndex + 2]?.value === 'from'
-   ) {
-      return randomPhraseParser();
-   }
-
-   if (
-      token.name === 'IdentifierToken' && token.value === 'random' &&
-      parserTokens[parserIndex + 1]?.value === 'real'
-   ) {
-      return randomRealPhraseParser();
-   }
-
-   if (
-      token.name === 'IdentifierToken' && token.value === 'an' &&
-      ['integer', 'drawn', 'uniformly', 'at', 'random', 'from'].every(
-         (word, offset) => parserTokens[parserIndex + offset + 1]?.value === word
-      )
-   ) {
-      return uniformRandomPhraseParser();
-   }
-
-   // 'empty list' is a list with no elements
-   const nextToken = parserTokens[parserIndex + 1];
-   if (
-      token.name === 'IdentifierToken' && token.value === 'empty' &&
-      nextToken?.line === token.line && (nextToken.value === 'list' || nextToken.value === 'array')
-   ) {
-      nextIndex();
-      return { name: 'ArrayNode', elements: [] };
-   }
-
-   // 'new array', 'new array indexed from 1 to n' and 'new array of size n' also
-   // start empty; the bounds are checked but the array grows as it is written to
-   if (
-      token.name === 'IdentifierToken' && token.value === 'new' &&
-      nextToken?.line === token.line && (nextToken.value === 'list' || nextToken.value === 'array')
-   ) {
-      nextIndex();
-      const line = parserTokens[parserIndex].line;
-      const ahead = (offset: number) => {
-         const t = parserTokens[parserIndex + offset];
-         return t?.line === line ? t.value : undefined;
-      };
-      if (ahead(1) === 'indexed' && ahead(2) === 'from') {
-         nextIndex();
-         nextIndex();
-         nextIndex();
-         expressionParser(0);
-         nextIndex();
-         if (parserTokens[parserIndex]?.value !== 'to') {
-            throw new SyntaxError("Expected 'to' in 'new array indexed from ... to ...'.");
-         }
-         nextIndex();
-         expressionParser(0);
-      }
-      else if (ahead(1) === 'of' && ahead(2) === 'size') {
-         nextIndex();
-         nextIndex();
-         nextIndex();
-         expressionParser(0);
-      }
-      return { name: 'ArrayNode', elements: [] };
+   // Phrases written in words, from the convention: 'random integer from 1 to 6', 'empty list', ...
+   if (token.name === 'IdentifierToken' && phraseStarts.has(token.value!)) {
+      const phrase = phraseParser();
+      if (phrase) return phrase;
    }
 
    if (token.name === 'OpenParenToken') {
       nextIndex();
       const inner = expressionParser(0);
       // A comma makes a tuple, kept as a list: (1, key)
-      if (parserTokens[parserIndex + 1]?.name === 'CommaToken') {
+      if (convention.words.bracketTuples && parserTokens[parserIndex + 1]?.name === 'CommaToken') {
          const elements = [inner];
          while (parserTokens[parserIndex + 1]?.name === 'CommaToken') {
             nextIndex();
@@ -334,7 +282,8 @@ function isLetterTimes(index: number): boolean {
    const before = parserTokens[index - 1];
    const after = parserTokens[index + 1];
    const valueStarts = ['NumericToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken', 'SubstractionToken'];
-   return letter?.name === 'IdentifierToken' && letter.value === 'x' &&
+   return convention.words.letterTimes !== false &&
+      letter?.name === 'IdentifierToken' && letter.value === convention.words.letterTimes &&
       before?.line === letter.line &&
       after?.line === letter.line && valueStarts.includes(after.name);
 }
@@ -647,14 +596,13 @@ function isForStatement(): boolean {
       parserTokens[parserIndex + 2]?.value === 'from';
 }
 
-// VCAA commands that start with a plain word: open, close, append, report.
+// Commands that start with a plain word, from the convention: open, close, append, report.
 // The word is still a normal variable when it is followed by '←', '=', '[', '(' or '.'
-const COMMAND_WORDS = ['open', 'close', 'append', 'report'];
 
 function isCommandStatement(): boolean {
    const token = parserTokens[parserIndex];
    const next = parserTokens[parserIndex + 1];
-   if (token?.name !== 'IdentifierToken' || !COMMAND_WORDS.includes(token.value!)) return false;
+   if (token?.name !== 'IdentifierToken' || !convention.commands.includes(token.value!)) return false;
    if (!next || next.line !== token.line) return false;
    if (['AssignmentToken', 'OpenBracketToken', 'DotToken'].includes(next.name)) return false;
    // append (1, key) to list  starts with a bracket, so it needs the 'to' to tell it from a call
@@ -706,15 +654,14 @@ function commandParser(): atype.SentencesNode {
    return { name: 'PrintNode', value };
 }
 
-const FILE_READ_KINDS = ['integer', 'number', 'line', 'word'];
-
 // read next integer|number|line|word from <file>
 function fileReadParser(): atype.FileReadNode {
    nextIndex(); // 'next'
    nextIndex();
    const kind = parserTokens[parserIndex].value!;
-   if (!FILE_READ_KINDS.includes(kind)) {
-      throw new SyntaxError(`Expected ${FILE_READ_KINDS.join(', ')} after 'read next' but found '${kind}'.`);
+   const kinds = convention.fileRead.kinds;
+   if (!kinds.includes(kind)) {
+      throw new SyntaxError(`Expected ${kinds.join(', ')} after 'read next' but found '${kind}'.`);
    }
    nextIndex();
    if (parserTokens[parserIndex].value !== 'from') {
@@ -858,6 +805,9 @@ function defineParser() : atype.FunctionDefNode {
 
    // Without an enddefine the body is every following line indented deeper than 'define' (VCAA style)
    const endsWithKeyword = hasEnddefineAhead();
+   if (!endsWithKeyword && !convention.words.defineEndsByIndent) {
+      throw new SyntaxError(`Function '${identifier.value}' needs '${reservedWords.CODE_ENDDEFINE}' to show where it ends.`);
+   }
    const defineIndent = defineToken.indent ?? 0;
 
    insideDefine = true;
@@ -902,94 +852,183 @@ function returnParser() : atype.ReturnNode {
    return { name: 'ReturnNode' };
 }
 
-// random integer from <low> to <high> [inclusive | exclusive]  ->  randominteger(low, high)
-function randomPhraseParser(): atype.CallNode {
-   nextIndex(); // 'integer'
-   nextIndex(); // 'from'
-   nextIndex();
-   const low = expressionParser();
-   nextIndex();
-   if (parserTokens[parserIndex].value !== 'to') {
-      throw new SyntaxError(`Expected 'to' in 'random integer from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
-   }
-   nextIndex();
-   let high = expressionParser();
+// ---------- Phrases from the convention ----------
+// A phrase template is matched word by word on one line. A {value} is parsed as an
+// expression that ends where the next words of the phrase appear, so in
+// 'random real number from a (inclusive) to b' the value is 'a', not a call a(inclusive).
+// The first phrase that matches wins; its meaning (after '->') is parsed with the
+// matched values put in place of their names.
 
-   const bound = parserTokens[parserIndex + 1]?.value;
-   if (bound === 'inclusive') {
-      nextIndex();
-   }
-   else if (bound === 'exclusive') {
-      nextIndex();
-      high = {
-         name: 'ExpressionNode',
-         left: { name: 'GroupNode', body: high },
-         right: { name: 'NumericNode', value: '1' },
-         operator: { name: 'SubstractionToken', value: '-' }
-      };
+// `written` is the phrase as far as it matched, for the error message: 'random integer from ...'
+type PhraseMiss = { matched: number, expected: string, at: number, written: string[] };
+type PhraseState = { line: number | undefined, matched: number, written: string[], captured: Map<string, atype.Node> };
+
+function phraseParser(): atype.Node | null {
+   const start = parserIndex;
+   let bestMiss: (PhraseMiss & { phrase: Phrase }) | null = null;
+
+   for (const phrase of convention.phrases) {
+      const state: PhraseState = { line: parserTokens[start].line, matched: 0, written: [], captured: new Map() };
+      const result = matchPhrase(phrase.parts, start, state);
+      if (typeof result === 'number') {
+         parserIndex = result - 1;
+         return phraseMeaning(phrase, state.captured);
+      }
+      if (!bestMiss || result.matched > bestMiss.matched) bestMiss = { ...result, phrase };
    }
 
-   return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
+   // Two or more words of a phrase were written, so it was meant: say what is missing
+   if (bestMiss && bestMiss.matched >= 2) {
+      parserIndex = Math.min(bestMiss.at, parserTokens.length - 1);
+      const line = parserTokens[start].line;
+      const found = parserTokens.slice(bestMiss.at, bestMiss.at + 3).filter(token => token.line === line).map(token => token.value!);
+      throw new SyntaxError(`Expected ${bestMiss.expected} after '${spoken(bestMiss.written)}'` +
+         (found.length ? ` but found '${spoken(found)}'.` : '.'));
+   }
+   parserIndex = start;
+   return null;
 }
 
-// random real [number] from <low> [(inclusive)] to <high> [(exclusive)]  ->  randomreal(low, high)
-// The range is always [low, high): the markers only restate it, so they are accepted but not required
-function randomRealPhraseParser(): atype.CallNode {
-   nextIndex(); // 'real'
-   if (parserTokens[parserIndex + 1]?.value === 'number') nextIndex();
-   nextIndex();
-   if (parserTokens[parserIndex].value !== 'from') {
-      throw new SyntaxError(`Expected 'from' in 'random real number from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
-   }
-   nextIndex();
-   const low = expressionParser();
-   skipBoundMarker('inclusive');
-   nextIndex();
-   if (parserTokens[parserIndex].value !== 'to') {
-      throw new SyntaxError(`Expected 'to' in 'random real number from ... to ...' but found '${parserTokens[parserIndex].value}'.`);
-   }
-   nextIndex();
-   const high = expressionParser();
-   skipBoundMarker('exclusive');
+// Returns the index just after the phrase, or how far it got
+function matchPhrase(parts: PhrasePart[], at: number, state: PhraseState): number | PhraseMiss {
+   if (!parts.length) return at;
+   const [part, ...rest] = parts;
 
-   return { name: 'CallNode', callee: 'randomreal', args: [low, high] };
+   if (part.kind === 'word') {
+      const token = parserTokens[at];
+      if (token && token.line === state.line && part.options.includes(token.value!)) {
+         state.matched++;
+         state.written.push(token.value!);
+         return matchPhrase(rest, at + 1, state);
+      }
+      return miss(state, expectedNext(parts), at);
+   }
+
+   if (part.kind === 'optional') {
+      const matchedBefore = state.matched;
+      const writtenBefore = state.written.length;
+      const withPart = matchPhrase([...part.parts, ...rest], at, state);
+      if (typeof withPart === 'number') return withPart;
+      state.matched = matchedBefore;
+      state.written.length = writtenBefore;
+      const withoutPart = matchPhrase(rest, at, state);
+      if (typeof withoutPart === 'number') return withoutPart;
+      return withPart.matched >= withoutPart.matched ? withPart : withoutPart;
+   }
+
+   // A value: it ends where the words after it start
+   const follows = leadingWords(rest);
+   const end = findPhraseStop(at, follows, state.line);
+   const value = parseValueBetween(at, end);
+   if (!value) return miss(state, 'a value', at);
+   // The value ended but the phrase's next words are not there
+   const phraseMayEnd = follows.some(words => !words.length);
+   if ((end !== undefined && value.end !== end) || (end === undefined && !phraseMayEnd)) {
+      return miss({ ...state, written: [...state.written, '...'] }, expectedNext(rest), value.end);
+   }
+   state.captured.set(part.name, value.node);
+   state.written.push('...');
+   return matchPhrase(rest, value.end, state);
 }
 
-// Skips 'inclusive' or '(inclusive)' after a bound; any other marker is an error
-function skipBoundMarker(expected: string) {
-   const at = (offset: number) => parserTokens[parserIndex + offset];
-   const bracketed = at(1)?.name === 'OpenParenToken' && ['inclusive', 'exclusive'].includes(at(2)?.value!) && at(3)?.name === 'CloseParenToken';
-   const bare = ['inclusive', 'exclusive'].includes(at(1)?.value!);
-   if (!bracketed && !bare) return;
-   const marker = bracketed ? at(2).value : at(1).value;
-   if (marker !== expected) {
-      throw new SyntaxError(`A random real number includes its lower bound and excludes its upper bound, so this bound must be '${expected}', not '${marker}'.`);
-   }
-   parserIndex += bracketed ? 3 : 1;
+// What may come next, for an error message: "'(inclusive)' or 'to'"
+function expectedNext(parts: PhrasePart[]): string {
+   if (!parts.length) return 'the end of the phrase';
+   const [part, ...rest] = parts;
+   if (part.kind === 'word') return part.options.map(option => `'${option}'`).join(' or ');
+   if (part.kind === 'capture') return 'a value';
+   return `'${spoken(partsText(part.parts))}' or ${expectedNext(rest)}`;
 }
 
-// an integer drawn uniformly at random from [<low>, <high>] -> randominteger(low, high)
-function uniformRandomPhraseParser(): atype.CallNode {
-   for (let i = 0; i < 7; i++) nextIndex();
-   if (parserTokens[parserIndex].name !== 'OpenBracketToken') {
-      throw new SyntaxError("Expected '[' after 'an integer drawn uniformly at random from'.");
-   }
+function partsText(parts: PhrasePart[]): string[] {
+   return parts.flatMap(part => part.kind === 'word' ? [part.options[0]] : part.kind === 'capture' ? ['...'] : partsText(part.parts));
+}
 
-   nextIndex();
-   const low = expressionParser();
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'CommaToken') {
-      throw new SyntaxError("Expected ',' between the random integer bounds.");
-   }
+// Words as they are written: brackets and commas sit against their neighbours
+function spoken(words: string[]): string {
+   return words.join(' ').replace(/([(\[]) /g, '$1').replace(/ ([)\],])/g, '$1');
+}
 
-   nextIndex();
-   const high = expressionParser();
-   nextIndex();
-   if (parserTokens[parserIndex].name !== 'CloseBracketToken') {
-      throw new SyntaxError("Expected ']' after the random integer bounds.");
-   }
+function miss(state: PhraseState, expected: string, at: number): PhraseMiss {
+   return { matched: state.matched, expected, at, written: [...state.written] };
+}
 
-   return { name: 'CallNode', callee: 'randominteger', args: [low, high] };
+// The literal words that can come first after a value; an empty list means the phrase may end there
+function leadingWords(parts: PhrasePart[]): string[][][] {
+   if (!parts.length) return [[]];
+   const [part, ...rest] = parts;
+   if (part.kind === 'capture') return [[]];
+   if (part.kind === 'optional') return [...leadingWords([...part.parts, ...rest]), ...leadingWords(rest)];
+   return leadingWords(rest).map(words => [part.options, ...words]);
+}
+
+// First index after `at`, on the same line and outside brackets opened by the value, where one
+// of the following word sequences starts
+function findPhraseStop(at: number, follows: string[][][], line: number | undefined): number | undefined {
+   const sequences = follows.filter(words => words.length);
+   let depth = 0;
+   for (let i = at; i < parserTokens.length && parserTokens[i].line === line; i++) {
+      if (i > at && depth === 0 && sequences.some(words => words.every((options, offset) => {
+         const token = parserTokens[i + offset];
+         return token?.line === line && options.includes(token.value!);
+      }))) {
+         return i;
+      }
+      const name = parserTokens[i].name;
+      if (name === 'OpenParenToken' || name === 'OpenBracketToken') depth++;
+      if (name === 'CloseParenToken' || name === 'CloseBracketToken') depth--;
+      if (depth < 0) return i;
+   }
+   return undefined;
+}
+
+// Parses one expression starting at `from`, never reading past `to`
+function parseValueBetween(from: number, to: number | undefined): { node: atype.Node, end: number } | null {
+   const saved = parserTokens;
+   if (to !== undefined) parserTokens = saved.slice(0, to);
+   parserIndex = from;
+   try {
+      const node = expressionParser();
+      return { node, end: parserIndex + 1 };
+   } catch (e) {
+      if (e instanceof SyntaxError) return null;
+      throw e;
+   } finally {
+      parserTokens = saved;
+   }
+}
+
+function phraseMeaning(phrase: Phrase, captured: Map<string, atype.Node>): atype.Node {
+   const saved = parserTokens;
+   const savedIndex = parserIndex;
+   parserTokens = lexer(phrase.result);
+   parserIndex = 0;
+   let meaning: atype.Node;
+   try {
+      meaning = expressionParser();
+      if (parserIndex !== parserTokens.length - 1) throw new SyntaxError('');
+   } catch (e) {
+      if (!(e instanceof SyntaxError)) throw e;
+      throw new SyntaxError(`The convention phrase '${phrase.source}' has a meaning after '->' that is not a single value.`);
+   } finally {
+      parserTokens = saved;
+      parserIndex = savedIndex;
+   }
+   return putValues(meaning, captured);
+}
+
+// Replaces each name of a {value} with what was matched. Inside a calculation a matched
+// calculation keeps its brackets, so 'high - 1' with high = a + b stays (a + b) - 1
+function putValues<T>(node: T, captured: Map<string, atype.Node>, inCalculation = false): T {
+   if (Array.isArray(node)) return node.map(item => putValues(item, captured, inCalculation)) as T;
+   if (!node || typeof node !== 'object') return node;
+   const value = node as Record<string, unknown>;
+   if (value.name === 'IdentifierNode' && captured.has(value.value as string)) {
+      const replacement = captured.get(value.value as string)!;
+      return (inCalculation && replacement.name === 'ExpressionNode' ? { name: 'GroupNode', body: replacement } : replacement) as T;
+   }
+   const calculation = value.name === 'ExpressionNode' || value.name === 'NotNode';
+   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, putValues(item, captured, calculation)])) as T;
 }
 
 function callParser(): atype.CallNode {

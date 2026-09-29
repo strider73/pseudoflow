@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
 import { analyze } from '../src/lib/analyzers/analyze';
-import { loadConvention } from '../src/lib/convention/loader';
+import type { Convention } from '../src/lib/convention/loader';
 
 const ROOT = join(import.meta.dirname, '..');
 const CONVENTION = join(ROOT, 'pseudocode-convention.md');
@@ -70,8 +70,9 @@ function pffFiles(): Source[] {
 }
 
 // The rules themselves must load before any example is worth checking
+let convention: Convention;
 try {
-   const convention = loadConvention(readFileSync(CONVENTION, 'utf8'));
+   ({ convention } = await import('./load-convention'));
    console.log(`✓ convention loads: ${convention.phrases.length} phrases, ${Object.keys(convention.headings).length} headings, ${Object.keys(convention.builtins).length} builtins\n`);
 } catch (e) {
    console.log(`✗ convention does not load: ${(e as Error).message}`);

@@ -1,8 +1,13 @@
 import type * as atype from "./atypes"
-import { codeWordStore } from "../stores";
+import type { Convention } from "../convention/loader";
+import { codeWordStore, conventionStore } from "../stores";
 import englishWords from "../../i18n/code/en.json";
 
-function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
+function escapeRegExp(text: string): string {
+   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildTokenMap(word: typeof englishWords, convention: Convention): Array<atype.Token> {
    return [
       { name: 'DeclarationToken',         rule: new RegExp('^' + word.CODE_VAR + '$', 'g') },
       { name: 'PrintToken',               rule: new RegExp('^' + word.CODE_PRINT + '$', 'g') },
@@ -10,7 +15,7 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
       { name: 'DefineToken',              rule: new RegExp('^' + word.CODE_DEFINE + '$', 'g') },
       { name: 'CloseDefineToken',         rule: new RegExp('^' + word.CODE_ENDDEFINE + '$', 'g') },
       { name: 'ReturnToken',              rule: new RegExp('^' + word.CODE_RETURN + '$', 'g') },
-      { name: 'AssignmentToken',          rule: /^(\=|\u2190)$/g },
+      { name: 'AssignmentToken',          rule: new RegExp('^(' + convention.assignment.map(escapeRegExp).join('|') + ')$', 'g') },
       { name: 'OpenParenToken',           rule: /^\($/g },
       { name: 'CloseParenToken',          rule: /^\)$/g },
       { name: 'OpenIfToken',              rule: new RegExp('^' + word.CODE_IF + '$', 'g') },
@@ -48,34 +53,41 @@ function buildTokenMap(word: typeof englishWords): Array<atype.Token> {
    ];
 }
 
-// VCAA-style symbols and upper-case operators are rewritten to PseudoFlow's own
-// spelling, so the rest of the pipeline only ever sees one form
-// Braces are accepted as brackets so LaTeX-style powers like 2^{n+1} work
-const SYMBOL_ALIASES: Record<string, string> = { '≠': '!=', '≤': '<=', '≥': '>=', '×': '*', '÷': '/', '{': '(', '}': ')' };
+// Symbols, the words of the language and the convention's rules are rewritten to
+// PseudoFlow's own spelling, so the rest of the pipeline only ever sees one form
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const SUPERSCRIPT_RUN = new RegExp('^[' + SUPERSCRIPT_DIGITS + ']+$');
-const END_PREFIXES = ['end', 'fin'];
-// 'Algorithm: <title>' keeps its title as written, so it can label the chart
-const ALGORITHM_HEADER = /^[ \t]*algorithm[ \t]*:[ \t]*(.*?)[ \t]*$/i;
 
-function buildWordAliases(word: typeof englishWords): Record<string, string> {
-   return {
-      ...SYMBOL_ALIASES,
-      'mod': '%',
-      'MOD': '%',
-      [word.CODE_AND.toUpperCase()]: word.CODE_AND,
-      [word.CODE_OR.toUpperCase()]: word.CODE_OR,
-      [word.CODE_NOT.toUpperCase()]: word.CODE_NOT
-   };
+function buildWordAliases(word: typeof englishWords, convention: Convention): Record<string, string> {
+   const aliases = { ...convention.symbols };
+   if (convention.words.upperCaseLogic) {
+      for (const logic of [word.CODE_AND, word.CODE_OR, word.CODE_NOT]) aliases[logic.toUpperCase()] = logic;
+   }
+   return aliases;
 }
 
-let tokenStringMap: Array<atype.Token> = buildTokenMap(englishWords);
-let wordAliases: Record<string, string> = buildWordAliases(englishWords);
+// '<heading>: <title>' for a heading that starts a chart keeps its title as written
+function buildChartHeading(convention: Convention): RegExp | null {
+   const headings = Object.keys(convention.headings).filter(heading => convention.headings[heading] === 'chart');
+   if (!headings.length) return null;
+   return new RegExp('^[ \\t]*(?:' + headings.map(escapeRegExp).join('|') + ')[ \\t]*:[ \\t]*(.*?)[ \\t]*$', 'i');
+}
 
-codeWordStore.subscribe(word => {
-   tokenStringMap = buildTokenMap(word);
-   wordAliases = buildWordAliases(word);
-});
+let words = englishWords;
+let convention: Convention | null = null;
+let tokenStringMap: Array<atype.Token> = [];
+let wordAliases: Record<string, string> = {};
+let chartHeading: RegExp | null = null;
+
+function rebuild() {
+   if (!convention) return;
+   tokenStringMap = buildTokenMap(words, convention);
+   wordAliases = buildWordAliases(words, convention);
+   chartHeading = buildChartHeading(convention);
+}
+
+codeWordStore.subscribe(value => { words = value; rebuild(); });
+conventionStore.subscribe(value => { convention = value; rebuild(); });
 
 // Width of the leading whitespace of the line starting at `start` (tabs count as 4)
 function indentAt(code: string, start: number): number {
@@ -89,6 +101,8 @@ function indentAt(code: string, start: number): number {
 }
 
 export const lexer = (code: string) : Array<atype.Token> => {
+   const rules = convention;
+   if (!rules) throw new Error('The pseudocode convention is not loaded.');
    // remove comments
    code = code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g,'');
    // separate words to lexer
@@ -110,9 +124,9 @@ export const lexer = (code: string) : Array<atype.Token> => {
       lastIndex = regex.lastIndex;
 
       const indent = indentAt(code, lineStart);
-      if (code.slice(lineStart, match.index).trim() === '') {
+      if (chartHeading && code.slice(lineStart, match.index).trim() === '') {
          const lineEnd = code.indexOf('\n', match.index) < 0 ? code.length : code.indexOf('\n', match.index);
-         const header = code.slice(lineStart, lineEnd).match(ALGORITHM_HEADER);
+         const header = code.slice(lineStart, lineEnd).match(chartHeading);
          if (header) {
             tokens.push({ name: 'AlgorithmToken', value: header[1], line, indent } as atype.Token);
             regex.lastIndex = lastIndex = lineEnd;
@@ -120,7 +134,7 @@ export const lexer = (code: string) : Array<atype.Token> => {
          }
       }
       // Superscript digits are a power: 10⁷ is 10^7, 2¹⁰ is 2^10
-      if (SUPERSCRIPT_RUN.test(match[0])) {
+      if (rules.words.superscriptPowers && SUPERSCRIPT_RUN.test(match[0])) {
          const exponent = [...match[0]].map(c => SUPERSCRIPT_DIGITS.indexOf(c)).join('');
          tokens.push({ name: 'PowerToken', value: '^', line, indent } as atype.Token);
          tokens.push({ name: 'NumericToken', value: exponent, line, indent } as atype.Token);
@@ -144,7 +158,7 @@ function mergeTwoWordEnds(tokens: Array<atype.Token>): Array<atype.Token> {
    for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
       const next = tokens[i + 1];
-      if (token.name === 'IdentifierToken' && END_PREFIXES.includes(token.value!) && next && next.line === token.line) {
+      if (token.name === 'IdentifierToken' && convention!.words.endPrefixes.includes(token.value!) && next && next.line === token.line) {
          const combined = token.value! + next.value;
          const closing = tokenStringMap.find(({ name, rule }) => name.startsWith('Close') && combined.match(rule!));
          if (closing) {

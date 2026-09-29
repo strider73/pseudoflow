@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './load-convention';
 import { analyze } from '../src/lib/analyzers/analyze';
 
 const source = `define gen_element():

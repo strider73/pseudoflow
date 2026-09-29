@@ -6,6 +6,7 @@ import englishTranslations from "../i18n/app/en.json";
 import spanishTranslations from "../i18n/app/es.json";
 import { chartPalettes } from './themes';
 import { APP_VERSION, FORMAT_VERSION, MIN_FORMAT_VERSION } from './version';
+import type { Convention } from './convention/loader';
 
 function stored(key: string, fallback: string): string {
    if (typeof localStorage !== 'undefined') {
@@ -42,6 +43,8 @@ export const defaultName = 'pseudocode.pff';
 export const fileNameStore = writable(defaultName);
 export const pffMetaStore = writable<PffMeta | null>(null);
 export const codeWordStore = writable(codeWordLang === 'es' ? spanishWords : englishWords);
+// The rules from pseudocode-convention.md; set once the file is loaded (see convention/app.ts)
+export const conventionStore = writable<Convention | null>(null);
 export const translationStore = writable(translationLang === 'es' ? spanishTranslations : englishTranslations);
 export const flowchartDrawingStore = writable(isFlowchartVisible);
 export const syntaxErrorsStore = writable(syntaxErrorsEnabled);

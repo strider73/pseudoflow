@@ -36,6 +36,11 @@ export class ConventionError extends Error {}
 
 const KEYS = ['assignment', 'symbols', 'words', 'headings', 'commands', 'fileRead', 'phrases', 'builtins'];
 
+// What PseudoFlow has code for. The convention picks from these; anything else needs
+// new code first, so it is reported instead of silently doing nothing
+const KNOWN_COMMANDS = ['open', 'close', 'append', 'report'];
+const KNOWN_BUILTINS = ['randominteger', 'randomreal'];
+
 export function loadConvention(markdown: string): Convention {
    const merged: Record<string, unknown> = {};
    const fence = /^```convention[ \t]*\n([\s\S]*?)^```/gm;
@@ -73,13 +78,18 @@ export function loadConvention(markdown: string): Convention {
          defineEndsByIndent: bool(words.defineEndsByIndent, 'words.defineEndsByIndent')
       },
       headings: Object.fromEntries(Object.entries(headings).map(([word, kind]) => {
+         if (!/^\w+$/.test(word)) throw new ConventionError(`Heading '${word}' must be a single word.`);
          if (kind !== 'chart' && kind !== 'skip') throw new ConventionError(`Heading '${word}' must be 'chart' or 'skip', not '${kind}'.`);
          return [word.toLowerCase(), kind];
       })),
-      commands: stringList(merged.commands, 'commands'),
+      commands: stringList(merged.commands, 'commands').map(command => {
+         if (!KNOWN_COMMANDS.includes(command)) throw new ConventionError(`PseudoFlow has no command '${command}'. It knows: ${KNOWN_COMMANDS.join(', ')}.`);
+         return command;
+      }),
       fileRead: { kinds: stringList(record(merged.fileRead, 'fileRead').kinds, 'fileRead.kinds') },
       phrases: stringList(merged.phrases, 'phrases').map(compilePhrase),
       builtins: Object.fromEntries(Object.entries(record(merged.builtins, 'builtins')).map(([name, arity]) => {
+         if (!KNOWN_BUILTINS.includes(name)) throw new ConventionError(`PseudoFlow has no built-in function '${name}'. It knows: ${KNOWN_BUILTINS.join(', ')}.`);
          if (!Number.isInteger(arity) || (arity as number) < 0) throw new ConventionError(`Builtin '${name}' needs a whole number of inputs.`);
          return [name, arity as number];
       }))
@@ -116,6 +126,13 @@ export function compilePhrase(source: string): Phrase {
    if (stack.length !== 1) throw new ConventionError(`Phrase '${source}' opens '[' without closing ']'.`);
    const parts = stack[0];
    if (parts[0]?.kind !== 'word') throw new ConventionError(`Phrase '${source}' must start with a word.`);
+   // A value ends where the next word starts, so two values in a row cannot be told apart
+   const flat = (list: PhrasePart[]): PhrasePart[] => list.flatMap(part => part.kind === 'optional' ? flat(part.parts) : [part]);
+   flat(parts).forEach((part, i, all) => {
+      if (part.kind === 'capture' && all[i + 1]?.kind === 'capture') {
+         throw new ConventionError(`Phrase '${source}' has {${part.name}} straight after another value; put a word between them.`);
+      }
+   });
    return { source, parts, result, captures };
 }
 

@@ -1,12 +1,15 @@
 import type * as atype from './atypes'
 import type { AnalysisError } from './atypes'
+import { conventionStore } from '../stores'
 
 type ValueType = 'number' | 'string' | 'boolean' | 'array'
 
 const ARITHMETIC_OPS = ['+', '-', '*', '/', '%', '^']
 const COMPARISON_OPS = ['==', '!=', '<', '>', '<=', '>=']
 const BOOLEAN_OPS = ['&&', '||']
-export const BUILTIN_FUNCTIONS: Record<string, number> = { randominteger: 2, randomreal: 2 }
+// Functions every program can call, with their number of inputs, from the convention
+let builtins: Record<string, number> = {}
+conventionStore.subscribe(value => { if (value) builtins = value.builtins })
 
 export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): AnalysisError[] {
    const errors: AnalysisError[] = []
@@ -173,7 +176,7 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
          case 'FileReadNode':
             return node.kind === 'integer' || node.kind === 'number' ? 'number' : 'string'
          case 'CallNode':
-            return node.callee in BUILTIN_FUNCTIONS && !functions.has(node.callee) ? 'number' : undefined
+            return Object.hasOwn(builtins, node.callee) && !functions.has(node.callee) ? 'number' : undefined
          default:
             return undefined
       }
@@ -244,7 +247,7 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
 
    function checkCall(node: atype.CallNode) {
       const fn = functions.get(node.callee)
-      const arity = fn ? fn.params.length : BUILTIN_FUNCTIONS[node.callee]
+      const arity = fn ? fn.params.length : Object.hasOwn(builtins, node.callee) ? builtins[node.callee] : undefined
       // A variable can hold a function passed in as a parameter; its arity is unknown until it runs
       const callsVariable = !fn && findSymbol(node.callee) !== undefined
       if (arity === undefined && !callsVariable) {
