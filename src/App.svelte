@@ -372,14 +372,88 @@
    // Files opened from Finder (double-click, "Open With") are queued by the
    // native side until the page is ready to take them
    onMount(() => {
-      if (!isTauri) return;
       let unlisten: (() => void) | undefined;
+      const restoring = restoreSession();
+      if (!isTauri) return;
       import("@tauri-apps/api/event").then(async ({ listen }) => {
+         await restoring;
          unlisten = await listen('opened-files', () => openQueuedFiles());
          openQueuedFiles();
       }).catch(err => console.error('Tauri API error:', err));
       return () => unlisten?.();
    });
+
+   // Open tabs are kept in localStorage as they change, so they come back even
+   // if the app was killed rather than closed
+   const SESSION_KEY = 'pseudoflow-session';
+   type SavedTab = Pick<DocTab, 'name' | 'path' | 'pseudocode' | 'savedPseudocode' | 'pffMeta'>;
+   let sessionRestored = false;
+   let sessionTimer: any;
+
+   $: scheduleSessionSave(tabList, activeTabId);
+
+   function scheduleSessionSave(..._deps: unknown[]) {
+      if (!sessionRestored) return;
+      clearTimeout(sessionTimer);
+      sessionTimer = setTimeout(saveSession, 300);
+   }
+
+   function saveSession() {
+      try {
+         const saved: SavedTab[] = tabs.map(({ name, path, pseudocode, savedPseudocode, pffMeta }) =>
+            ({ name, path, pseudocode, savedPseudocode, pffMeta }));
+         const active = tabs.findIndex(t => t.id === activeTabId);
+         localStorage.setItem(SESSION_KEY, JSON.stringify({ tabs: saved, active }));
+      } catch (err) {
+         console.error('Could not save session:', err);
+      }
+   }
+
+   async function restoreSession() {
+      try {
+         const raw = localStorage.getItem(SESSION_KEY);
+         const session = raw ? JSON.parse(raw) : null;
+         if (!session || !Array.isArray(session.tabs) || session.tabs.length === 0) return;
+
+         const restored: DocTab[] = [];
+         let active = 0;
+         for (const [index, saved] of (session.tabs as SavedTab[]).entries()) {
+            const tab: DocTab = { ...createTab(), ...saved };
+            // A file with no unsaved edits is read again in case it changed on disk
+            if (isTauri && tab.path && !isModified(tab)) {
+               try {
+                  const { readTextFile } = await import("@tauri-apps/api/fs");
+                  const parsed = parsePffFile(await readTextFile(tab.path));
+                  tab.pseudocode = tab.savedPseudocode = parsed.content;
+                  tab.pffMeta = parsed.meta;
+               } catch {
+                  continue; // the file is gone
+               }
+            }
+            if (index === session.active) active = restored.length;
+            restored.push(tab);
+         }
+         // Skip if nothing survived or a file was opened while restoring
+         if (restored.length === 0 || tabs.length > 1 || activeTab().pseudocode) return;
+
+         const target = restored[active];
+         tabs = restored;
+         activeTabId = target.id;
+         pffMeta = target.pffMeta;
+         savedPseudocode = target.savedPseudocode;
+         pseudocode = target.pseudocode;
+         fileNameStore.set(target.name);
+         if (target.path) lastFolder = target.path.slice(0, target.path.length - baseName(target.path).length);
+         editorRef?.resetUndo();
+         lastPseudocode = '';
+         generateTree();
+      } catch (err) {
+         console.error('Could not restore session:', err);
+      } finally {
+         sessionRestored = true;
+         saveSession();
+      }
+   }
 
    async function openQueuedFiles() {
       try {
