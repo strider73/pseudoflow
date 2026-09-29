@@ -220,6 +220,18 @@ function atomParser(): atype.Node {
    return tokenToNode(token);
 }
 
+// VCAA uses the letter x as a times sign: 'product x i'. It only counts as one when it
+// sits between two values on the same line, where a variable could not appear.
+function isLetterTimes(index: number): boolean {
+   const letter = parserTokens[index];
+   const before = parserTokens[index - 1];
+   const after = parserTokens[index + 1];
+   const valueStarts = ['NumericToken', 'IdentifierToken', 'OpenParenToken', 'OpenBracketToken', 'SubstractionToken'];
+   return letter?.name === 'IdentifierToken' && letter.value === 'x' &&
+      before?.line === letter.line &&
+      after?.line === letter.line && valueStarts.includes(after.name);
+}
+
 function expressionParser(minPrecedence: number = 0): atype.Node {
    let left = atomParser();
 
@@ -235,6 +247,10 @@ function expressionParser(minPrecedence: number = 0): atype.Node {
    }
 
    while (true) {
+      if (isLetterTimes(parserIndex + 1)) {
+         const letter = parserTokens[parserIndex + 1];
+         parserTokens[parserIndex + 1] = { name: 'MultiplicationToken', value: '*', line: letter.line, indent: letter.indent };
+      }
       const nextToken = parserTokens[parserIndex + 1];
       if (!nextToken) break;
       const prec = precedenceOf(nextToken);
@@ -665,7 +681,14 @@ function defineParser() : atype.FunctionDefNode {
    do {
       const next = parserTokens[parserIndex + 1];
       if (!next) break;
-      if (!endsWithKeyword && next.line !== line && (next.indent ?? 0) <= defineIndent) break;
+      if (!endsWithKeyword && next.line !== line && (next.indent ?? 0) <= defineIndent) {
+         // VCAA writes the closing 'return' level with 'define'; it still belongs to the function
+         if (next.name === 'ReturnToken') {
+            nextIndex();
+            body.push(...parse());
+         }
+         break;
+      }
       nextIndex();
       if (parserTokens[parserIndex].name === 'CloseDefineToken') break;
       body.push(...parse());
