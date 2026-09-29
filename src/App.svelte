@@ -1,4 +1,5 @@
 <script lang="ts">
+   import { onMount } from "svelte";
     import { translationStore, defaultName, fileNameStore, flowchartDrawingStore, errorStore, syntaxErrorsStore, codeWordLang, codeWordStore, APP_VERSION } from "./lib/stores";
    import type * as atype from "./lib/analyzers/atypes"
    import Topbar from "./components/Topbar.svelte";
@@ -208,6 +209,40 @@
           }).catch(err => console.error('Tauri API error:', err));
       } else {
          document.getElementById("file-import").click();
+      }
+   }
+
+   // Files opened from Finder (double-click, "Open With") are queued by the
+   // native side until the page is ready to take them
+   onMount(() => {
+      if (!isTauri) return;
+      let unlisten: (() => void) | undefined;
+      import("@tauri-apps/api/event").then(async ({ listen }) => {
+         unlisten = await listen('opened-files', () => openQueuedFiles());
+         openQueuedFiles();
+      }).catch(err => console.error('Tauri API error:', err));
+      return () => unlisten?.();
+   });
+
+   async function openQueuedFiles() {
+      try {
+         const { invoke } = await import("@tauri-apps/api/tauri");
+         const paths = await invoke<string[]>('take_opened_files');
+         const filePath = paths[paths.length - 1];
+         if (!filePath) return;
+         const fileName = filePath.split(/(\\|\/)/g).pop();
+
+         if (pseudocode && pseudocode !== savedPseudocode) {
+            const { ask } = await import("@tauri-apps/api/dialog");
+            const discard = await ask(`Discard your unsaved changes and open ${fileName}?`, { title: 'PseudoFlow', type: 'warning' });
+            if (!discard) return;
+         }
+
+         const { readTextFile } = await import("@tauri-apps/api/fs");
+         const data = await readTextFile(filePath);
+         loadFileContent(data.toString(), fileName);
+      } catch (err) {
+         console.error('Could not open file:', err);
       }
    }
 
