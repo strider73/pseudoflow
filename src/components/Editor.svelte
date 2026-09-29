@@ -337,6 +337,13 @@
     export function undoAction() { applyUndoRedo(true); }
     export function redoAction() { applyUndoRedo(false); }
     export function resetUndo() { undoer.reset(); syncUndoState(); }
+    // Save must not wait for deferred highlighting or command-button updates.
+    export function getCurrentText(): string {
+       if (!editorElement) return editorText;
+       const currentText = editorElement.innerText;
+       if (currentText !== editorText) editorText = currentText;
+       return currentText;
+    }
     // Each tab keeps its own history: install `next` (or a fresh one) and hand back the current
     export function swapUndo(next?: EditorUndo): EditorUndo {
        const previous = undoer;

@@ -370,15 +370,17 @@
    // otherwise (or after renaming it in the file box) a save dialog asks where.
    async function exportButtonClick(): Promise<boolean> {
       const tab = activeTab();
-      const contentAtSave = pseudocode;
-      const contentChanged = pseudocode !== savedPseudocode;
+      // Read contenteditable directly so an immediate click cannot save stale bound text.
+      const contentAtSave = editorRef?.getCurrentText() ?? pseudocode;
+      if (contentAtSave !== pseudocode) pseudocode = contentAtSave;
+      const contentChanged = contentAtSave !== savedPseudocode;
       let meta: PffMeta;
       if (pffMeta) {
          meta = contentChanged ? updatePffMeta(pffMeta, APP_VERSION) : pffMeta;
       } else {
          meta = createPffMeta(codeWordLang, APP_VERSION);
       }
-      const fileContents = serializePffFile(meta, pseudocode);
+      const fileContents = serializePffFile(meta, contentAtSave);
 
       if (isTauri) {
          try {
@@ -417,7 +419,7 @@
       tempLink.click();
       tempLink.remove();
       URL.revokeObjectURL(tempLink.href);
-      savedPseudocode = pseudocode;
+      savedPseudocode = contentAtSave;
       pffMeta = meta;
       return true;
    }
