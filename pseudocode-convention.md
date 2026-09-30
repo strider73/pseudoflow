@@ -38,7 +38,7 @@ Block format: YAML. Each top-level key appears in one block only. Write phrases 
 
 ### Symbols
 
-Maths symbols and upper-case words are read as PseudoFlow's own spelling: `a ≠ b` is `a != b`, `x mod 2` is `x % 2`. Assignment is `←` or `=`.
+Maths symbols and upper-case words are read as PseudoFlow's own spelling: `a ≠ b` is `a != b`, `x mod 2` is `x % 2`, and the dashes `–` and `−` are minus. Assignment is `←` or `=`.
 
 ```convention
 assignment: ['←', '=']
@@ -52,6 +52,8 @@ symbols:
   '}': ')'
   'mod': '%'
   'MOD': '%'
+  '–': '-'
+  '−': '-'
 ```
 
 ### Words and line shapes
@@ -61,6 +63,7 @@ symbols:
 - The letter `x` between two values on one line means times: `product x i`.
 - A run of superscript digits is a power: `i²`, `10⁷`.
 - `(1, key)` in brackets is a tuple, kept as a list.
+- `return a, b` returns several values as one tuple, the same as `return (a, b)`.
 - Without `enddefine`, a function ends where the indentation returns to the level of `define`.
 
 ```convention
@@ -70,6 +73,7 @@ words:
   letterTimes: x
   superscriptPowers: true
   bracketTuples: true
+  returnTuple: true
   defineEndsByIndent: true
 ```
 

@@ -23,6 +23,7 @@ export type Convention = {
       letterTimes: string | false,
       superscriptPowers: boolean,
       bracketTuples: boolean,
+      returnTuple: boolean,
       defineEndsByIndent: boolean
    },
    headings: Record<string, HeadingKind>,          // keys are lower case
@@ -75,6 +76,7 @@ export function loadConvention(markdown: string): Convention {
          letterTimes: words.letterTimes === false ? false : str(words.letterTimes, 'words.letterTimes'),
          superscriptPowers: bool(words.superscriptPowers, 'words.superscriptPowers'),
          bracketTuples: bool(words.bracketTuples, 'words.bracketTuples'),
+         returnTuple: bool(words.returnTuple, 'words.returnTuple'),
          defineEndsByIndent: bool(words.defineEndsByIndent, 'words.defineEndsByIndent')
       },
       headings: Object.fromEntries(Object.entries(headings).map(([word, kind]) => {

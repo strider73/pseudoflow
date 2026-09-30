@@ -846,7 +846,18 @@ function returnParser() : atype.ReturnNode {
    // A value is only taken from the same line, so a bare return followed by another statement works
    if (next && next.line === token.line && valueStartTokens.includes(next.name)) {
       nextIndex();
-      return { name: 'ReturnNode', value: expressionParser() };
+      const value = expressionParser();
+      // return a, b  ->  one tuple, like return (a, b)
+      if (convention.words.returnTuple && parserTokens[parserIndex + 1]?.name === 'CommaToken' && parserTokens[parserIndex + 1].line === token.line) {
+         const elements = [value];
+         while (parserTokens[parserIndex + 1]?.name === 'CommaToken' && parserTokens[parserIndex + 1].line === token.line) {
+            nextIndex();
+            nextIndex();
+            elements.push(expressionParser());
+         }
+         return { name: 'ReturnNode', value: { name: 'ArrayNode', elements } };
+      }
+      return { name: 'ReturnNode', value };
    }
 
    return { name: 'ReturnNode' };
