@@ -1,6 +1,6 @@
 {
    "md: Phrases :: a ← 0": 0,
-   "md: An example for finding the smaller of two numbers a and b. :: Algorithm: minimum of two numbers": 5,
+   "md: An example for finding the smaller of two numbers a and b. :: Algorithm: minimum of two numbers": 0,
    "md: Repetition :: for i from 1 to 5": 0,
    "md: Repetition :: x ← 1": 0,
    "md: Functions :: define factorial (n):": 0,
@@ -22,7 +22,7 @@
    "pff: file_reader.pff": 0,
    "pff: file_reader_advance.pff": 0,
    "pff: max-heap.pff": 0,
-   "pff: max-heap_advance.pff": 5,
+   "pff: max-heap_advance.pff": 0,
    "pff: test/content-with-separator.pff": 2,
    "pff: test/legacy-plain.pff": 0,
    "pff: test/malformed-header.pff": 0,

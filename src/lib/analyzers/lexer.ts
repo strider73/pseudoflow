@@ -141,7 +141,9 @@ export const lexer = (code: string) : Array<atype.Token> => {
          continue;
       }
 
-      const word = Object.prototype.hasOwnProperty.call(wordAliases, match[0]) ? wordAliases[match[0]] : match[0];
+      // A word followed by ':' is a heading ('Input: ...'), so it keeps its own spelling
+      const isHeading = /^\w+$/.test(match[0]) && /^[ \t]*:/.test(code.slice(regex.lastIndex));
+      const word = !isHeading && Object.prototype.hasOwnProperty.call(wordAliases, match[0]) ? wordAliases[match[0]] : match[0];
       for (const { name, rule } of tokenStringMap) {
          if (word.match(rule!)) {
             tokens.push({ name, value: word, line, indent } as atype.Token);

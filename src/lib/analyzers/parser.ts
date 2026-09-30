@@ -1108,5 +1108,17 @@ function arrayIndexParser(): atype.ArrayIndexNode {
    }
    nextIndex(); // Avanzar a ']'
 
-   return { name: 'ArrayIndexNode', array, index };
+   let node: atype.ArrayIndexNode = { name: 'ArrayIndexNode', array, index };
+   // A position of a position: sigma[i][2]
+   while (parserTokens[parserIndex + 1]?.name === 'OpenBracketToken' && parserTokens[parserIndex + 1].line === parserTokens[parserIndex].line) {
+      nextIndex();
+      nextIndex();
+      const inner = expressionParser();
+      nextIndex();
+      if (parserTokens[parserIndex]?.name !== 'CloseBracketToken') {
+         throw new SyntaxError('"]" was expected after index.');
+      }
+      node = { name: 'ArrayIndexNode', array: node, index: inner };
+   }
+   return node;
 }

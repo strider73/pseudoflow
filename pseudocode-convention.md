@@ -38,7 +38,7 @@ Block format: YAML. Each top-level key appears in one block only. Write phrases 
 
 ### Symbols
 
-Maths symbols and upper-case words are read as PseudoFlow's own spelling: `a ≠ b` is `a != b`, `x mod 2` is `x % 2`, and the dashes `–` and `−` are minus. Assignment is `←` or `=`.
+Maths symbols and upper-case words are read as PseudoFlow's own spelling: `a ≠ b` is `a != b`, `x mod 2` is `x % 2`, and the dashes `–` and `−` are minus. `input a, b` is `read a, b` (VCAA's word for entering values); a word followed by `:` stays a heading, so `Input:` lines are unaffected. Assignment is `←` or `=`.
 
 ```convention
 assignment: ['←', '=']
@@ -54,6 +54,7 @@ symbols:
   'MOD': '%'
   '–': '-'
   '−': '-'
+  'input': 'read'
 ```
 
 ### Words and line shapes
@@ -107,6 +108,7 @@ Phrases are written in words and read as a value. PseudoFlow tries them in order
 - `{name}` is a value; the value ends at the next word of the phrase.
 - `[...]` is optional; `a|b` accepts either word; `\[` and `\]` are literal brackets.
 - After `->` is what the phrase means.
+- `key of op` is the key of an operation pair `(1, key)`: its second value, `op[2]` (lists start at 1).
 
 ```convention
 phrases:
@@ -118,6 +120,7 @@ phrases:
   - 'new list|array indexed from {low} to {high} -> []'
   - 'new list|array of size {size} -> []'
   - 'new list|array -> []'
+  - 'key of {operation} -> operation[2]'
 ```
 
 Bounds can be names as well as numbers:

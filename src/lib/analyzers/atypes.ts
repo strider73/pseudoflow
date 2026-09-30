@@ -133,7 +133,8 @@ export type IdentifierNode =           { name: 'IdentifierNode', value: string |
 export type StringNode =               { name: 'StringNode', value: string | undefined };
 export type NumericNode =              { name: 'NumericNode', value: string | undefined };
 export type ArrayNode =                { name: 'ArrayNode', elements: Node[] };
-export type ArrayIndexNode =           { name: 'ArrayIndexNode', array: ArrayNode | IdentifierNode, index: Node }
+// array is another ArrayIndexNode for a position of a position: sigma[i][2]
+export type ArrayIndexNode =           { name: 'ArrayIndexNode', array: ArrayNode | IdentifierNode | ArrayIndexNode, index: Node }
 export type PropertyAccessNode =       { name: 'PropertyAccessNode', object: Node, property: string }
 
 export type SentencesNode = 

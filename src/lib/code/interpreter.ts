@@ -697,6 +697,12 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
          }
       });
    }
+   else if (node.name === 'ArrayIndexNode' && enableVariables && node.array.name !== 'IdentifierNode') {
+      // A position of a position: sigma[i][2] takes position 2 of the element sigma[i]
+      const arr = valueBuilder(node.array);
+      const index = safeEval(valueBuilder(node.index));
+      if (Array.isArray(arr)) value = arr[listPlace(index)];
+   }
    else if (node.name === 'ArrayIndexNode' && enableVariables) {
       const arrayName = node.array.value;
       const index = safeEval(valueBuilder(node.index));
@@ -710,7 +716,7 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
       });
    }
    else if (node.name === 'ArrayIndexNode' && !enableVariables) {
-      value = node.array.value + '[' + node.index.value + ']';
+      value = valueBuilder(node.array, false) + '[' + valueBuilder(node.index, false) + ']';
    }
    else if (node.name === 'PropertyAccessNode' && !enableVariables) {
       value = valueBuilder(node.object, false) + '.' + node.property;

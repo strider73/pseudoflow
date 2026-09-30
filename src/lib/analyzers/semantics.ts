@@ -223,7 +223,8 @@ export function semanticAnalyzer(program: { body: atype.SentencesNode[] }): Anal
             node.elements.forEach(e => checkTypeInValue(e))
             break
          case 'ArrayIndexNode':
-            checkDeclared(node.array.value!)
+            if (node.array.name === 'IdentifierNode') checkDeclared(node.array.value!)
+            else checkTypeInValue(node.array)
             checkTypeInValue(node.index)
             break
          case 'IdentifierNode':
