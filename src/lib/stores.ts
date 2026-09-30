@@ -45,6 +45,8 @@ export const pffMetaStore = writable<PffMeta | null>(null);
 export const codeWordStore = writable(codeWordLang === 'es' ? spanishWords : englishWords);
 // The rules from pseudocode-convention.md; set once the file is loaded (see convention/app.ts)
 export const conventionStore = writable<Convention | null>(null);
+// Why the last edit of pseudocode-convention.md could not be loaded; the rules before it stay in use
+export const conventionProblemStore = writable<string | null>(null);
 export const translationStore = writable(translationLang === 'es' ? spanishTranslations : englishTranslations);
 export const flowchartDrawingStore = writable(isFlowchartVisible);
 export const syntaxErrorsStore = writable(syntaxErrorsEnabled);

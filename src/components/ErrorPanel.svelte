@@ -1,5 +1,5 @@
 <script lang="ts">
-   import { errorStore, syntaxErrorsStore, semanticErrorsStore } from "../lib/stores";
+   import { errorStore, syntaxErrorsStore, semanticErrorsStore, conventionProblemStore } from "../lib/stores";
 
    $: visibleErrors = $errorStore.filter(e =>
       (e.type === 'syntax' && $syntaxErrorsStore) ||
@@ -7,8 +7,14 @@
    );
 </script>
 
-{#if visibleErrors.length > 0}
+{#if visibleErrors.length > 0 || $conventionProblemStore}
 <div class="errors-panel">
+   {#if $conventionProblemStore}
+   <div class="error-entry">
+      <span class="badge syntax">Convention</span>
+      <span class="message">pseudocode-convention.md was not reloaded, so the rules before this edit are in use: {$conventionProblemStore}</span>
+   </div>
+   {/if}
    {#each visibleErrors as error}
    <div class="error-entry">
       <span class="badge" class:syntax={error.type === 'syntax'} class:semantic={error.type === 'semantic'}>

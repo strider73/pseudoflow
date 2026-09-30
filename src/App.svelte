@@ -1,6 +1,6 @@
 <script lang="ts">
    import { onMount } from "svelte";
-    import { translationStore, defaultName, fileNameStore, flowchartDrawingStore, errorStore, syntaxErrorsStore, codeWordLang, codeWordStore, APP_VERSION } from "./lib/stores";
+    import { translationStore, defaultName, fileNameStore, flowchartDrawingStore, errorStore, syntaxErrorsStore, codeWordLang, codeWordStore, conventionStore, APP_VERSION } from "./lib/stores";
    import type * as atype from "./lib/analyzers/atypes"
    import Topbar from "./components/Topbar.svelte";
    import TabBar from "./components/TabBar.svelte";
@@ -202,12 +202,14 @@
        }
     }
 
-   // Re-parse when pseudocode language changes
-   codeWordStore.subscribe(() => {
+   // Re-parse when pseudocode language or pseudocode-convention.md changes
+   function reparseSoon() {
       lastPseudocode = '';
       clearTimeout(timeoutToParse);
       timeoutToParse = setTimeout(generateTree, 350);
-   });
+   }
+   codeWordStore.subscribe(reparseSoon);
+   conventionStore.subscribe(reparseSoon);
 
    // Generate tree and perform pre-execution tasks on run button press
     function prepareExecution() {
