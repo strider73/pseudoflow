@@ -64,6 +64,7 @@ symbols:
 - A run of superscript digits is a power: `i²`, `10⁷`.
 - `(1, key)` in brackets is a tuple, kept as a list.
 - `return a, b` returns several values as one tuple, the same as `return (a, b)`.
+- List positions start at 1: `sigma[1]` is the first element, matching `for i from 1 to L`.
 - Without `enddefine`, a function ends where the indentation returns to the level of `define`.
 
 ```convention
@@ -74,6 +75,7 @@ words:
   superscriptPowers: true
   bracketTuples: true
   returnTuple: true
+  listStart: 1
   defineEndsByIndent: true
 ```
 

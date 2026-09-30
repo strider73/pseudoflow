@@ -24,6 +24,7 @@ export type Convention = {
       superscriptPowers: boolean,
       bracketTuples: boolean,
       returnTuple: boolean,
+      listStart: 0 | 1,
       defineEndsByIndent: boolean
    },
    headings: Record<string, HeadingKind>,          // keys are lower case
@@ -77,6 +78,7 @@ export function loadConvention(markdown: string): Convention {
          superscriptPowers: bool(words.superscriptPowers, 'words.superscriptPowers'),
          bracketTuples: bool(words.bracketTuples, 'words.bracketTuples'),
          returnTuple: bool(words.returnTuple, 'words.returnTuple'),
+         listStart: listStart(words.listStart),
          defineEndsByIndent: bool(words.defineEndsByIndent, 'words.defineEndsByIndent')
       },
       headings: Object.fromEntries(Object.entries(headings).map(([word, kind]) => {
@@ -136,6 +138,11 @@ export function compilePhrase(source: string): Phrase {
       }
    });
    return { source, parts, result, captures };
+}
+
+function listStart(value: unknown): 0 | 1 {
+   if (value !== 0 && value !== 1) throw new ConventionError(`'words.listStart' must be 0 or 1, the position of a list's first element.`);
+   return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

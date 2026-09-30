@@ -1,10 +1,25 @@
 import type * as atype from "../analyzers/atypes";
-import { codeWordStore } from "../stores";
+import { codeWordStore, conventionStore } from "../stores";
 
 let reservedWords;
 codeWordStore.subscribe(value => {
    reservedWords = value;
 });
+
+// Position of a list's first element, from the convention (VCAA counts from 1)
+let listStart = 1;
+conventionStore.subscribe(value => {
+   if (value) listStart = value.words.listStart;
+});
+
+// Turns a position written in the program into the place it is stored
+function listPlace(position: unknown): number {
+   const place = Number(position) - listStart;
+   if (!Number.isInteger(place) || place < 0) {
+      throw new Error(`List positions start at ${listStart}, so '${position}' is not a position in a list`);
+   }
+   return place;
+}
 
 let interpreterPrints: string;
 let interpreterVariables: Array<{identifier: string, value: unknown}>;
@@ -194,7 +209,7 @@ function interpretTreeNode(node: atype.SentencesNode): {print: string} {
                interpreterVariables[i]['value'] = [];
                arr = interpreterVariables[i]['value'];
             }
-            arr[index] = storedValue;
+            arr[listPlace(index)] = storedValue;
          }
       } else {
          const storedValue = toStoredValue(safeEval(valueBuilder(node.value)));
@@ -519,9 +534,9 @@ function safeEval(expression: any): any {
             let index = parseExpression();
             expect('bracketClose');
             if (Array.isArray(value)) {
-               value = value[index];
+               value = value[listPlace(index)];
             } else if (typeof value === 'string') {
-               value = value[index];
+               value = value[listPlace(index)];
             } else {
                value = undefined;
             }
@@ -689,7 +704,7 @@ export function valueBuilder(node: atype.Node, enableVariables: boolean = true):
          if (storedVariable['identifier'] === arrayName) {
             const arr = storedVariable['value'];
             if (Array.isArray(arr)) {
-               value = arr[index];
+               value = arr[listPlace(index)];
             }
          }
       });
