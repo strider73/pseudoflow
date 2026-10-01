@@ -180,11 +180,19 @@
       tabs = tabs.filter(t => t.id !== id);
    }
 
+    // Cmd+S (Ctrl+S off macOS) saves; ignored while a save is still in progress
+    let saveActive = false;
     function handleWindowKeydown(event: KeyboardEvent) {
        clearTimeout(timeoutToParse);
        timeoutToParse = setTimeout(generateTree, 350);
 
-       if (event.ctrlKey && event.code === 'Tab') {
+       if ((event.metaKey || event.ctrlKey) && event.code === 'KeyS') {
+          event.preventDefault();
+          if (!event.repeat && !saveActive) {
+             saveActive = true;
+             exportButtonClick().finally(() => { saveActive = false; });
+          }
+       } else if (event.ctrlKey && event.code === 'Tab') {
           event.preventDefault();
           cycleTab(event.shiftKey ? -1 : 1);
        } else if (event.code === 'F5') {
@@ -354,9 +362,13 @@
       }
    }
 
-   // Handle "Open" button in top bar
+   // Handle "Open" button in top bar. Extra clicks while the dialog is up
+   // would otherwise queue a second dialog that appears after the first closes
+   let openDialogActive = false;
    function importButtonClick() {
       if (isTauri) {
+          if (openDialogActive) return;
+          openDialogActive = true;
           import("@tauri-apps/api/dialog").then(async ({ open }) => {
             const { readTextFile } = await import("@tauri-apps/api/fs");
             const selected = await open({ defaultPath: currentFolder() || undefined, multiple: true });
@@ -365,7 +377,8 @@
                const data = await readTextFile(filePath);
                openInTab(data.toString(), filePath, baseName(filePath));
             }
-          }).catch(err => console.error('Tauri API error:', err));
+          }).catch(err => console.error('Tauri API error:', err))
+            .finally(() => { openDialogActive = false; });
       } else {
          document.getElementById("file-import").click();
       }
